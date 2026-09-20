@@ -88,8 +88,16 @@ connection. There is no network listener.
 
 While connected, a three-second keepalive maintains online mode. Physical power
 presses toggle black and the remembered CLI color/brightness, updating saved
-state. Scene-button presses are ignored. Entering online mode stops built-in
-color cycling; use `service disable` to return to the strip's standalone controls.
+state. Mode/scene-button presses alternate between the saved day and evening
+profiles, applying both temperature and brightness. The first press selects day
+if no profile has been selected; thereafter it selects the opposite of the last
+successful day/evening selection, including selections made through the CLI.
+That selection survives service restarts and USB reconnection. Power toggles
+and individual temperature/brightness adjustments do not reset the cycle.
+Mode presses apply the profile even while off (positive brightness turns it on).
+One-time CLI overrides do not change the saved defaults used by the button.
+
+Entering online mode stops built-in color cycling; use `service disable` to return to the strip's standalone controls.
 
 At startup and after reconnection, the service applies saved CLI state. Without
 saved state, it starts off with 4800 K/30% remembered for the next power press.

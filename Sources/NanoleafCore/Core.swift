@@ -141,11 +141,14 @@ public struct DisplayState: Codable, Equatable {
     // Retained nonzero setting for on after off/brightness 0.
     public var brightness: Int
     public var isOn: Bool
-    public init(temperature: Int = 4800, brightness: Int = 30, isOn: Bool = false) {
-        self.temperature = temperature; self.brightness = brightness; self.isOn = isOn
+    public var lastProfile: String?
+    public var nextProfile: String { lastProfile == "day" ? "evening" : "day" }
+    public init(temperature: Int = 4800, brightness: Int = 30, isOn: Bool = false, lastProfile: String? = nil) {
+        self.temperature = temperature; self.brightness = brightness; self.isOn = isOn; self.lastProfile = lastProfile
     }
     public func validate() throws {
         try Profile(temperature: temperature, brightness: brightness).validate()
+        guard lastProfile == nil || lastProfile == "day" || lastProfile == "evening" else { throw CLIError("Invalid saved profile name.") }
         guard brightness > 0 else { throw CLIError("Saved restore brightness must be greater than zero.") }
     }
 }
@@ -203,9 +206,9 @@ public final class Lightstrip {
         var next = state; next.temperature = kelvin; next.isOn = true
         try display(next)
     }
-    public func apply(_ profile: Profile) throws {
+    public func apply(_ profile: Profile, name: String? = nil) throws {
         try profile.validate()
-        var next = state; next.temperature = profile.temperature; next.isOn = profile.brightness > 0
+        var next = state; next.lastProfile = name; next.temperature = profile.temperature; next.isOn = profile.brightness > 0
         if profile.brightness > 0 { next.brightness = profile.brightness }
         try display(next)
     }

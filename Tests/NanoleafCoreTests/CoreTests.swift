@@ -15,6 +15,32 @@ final class CoreTests {
         for count in 0..<power.count { XCTAssertTrue(!ButtonEvent.isPowerPress(Array(power.prefix(count)))) }
     }
 
+    func testModeProfiles() throws {
+        XCTAssertEqual(ButtonEvent.actions([0x85, 0, 4, 0, 0, 1, 1]), [.mode])
+        XCTAssertEqual(ButtonEvent.actions([0x85, 0, 4, 1, 0, 2, 1]), [.mode])
+        XCTAssertEqual(ButtonEvent.actions([0x85, 0, 4, 0, 1, 1, 1]), [.power, .mode])
+        XCTAssertEqual(ButtonEvent.actions([0x85, 0, 4, 0, 0, 1, 4]), [])
+        let legacy = Data(#"{"temperature":4000,"brightness":30,"isOn":true}"#.utf8)
+        let initial = try JSONDecoder().decode(DisplayState.self, from: legacy)
+        XCTAssertEqual(initial.nextProfile, "day")
+        let transport = FakeTransport()
+        let device = Lightstrip(transport: transport, state: initial)
+        try device.apply(Profile(temperature: 4800, brightness: 40), name: "day")
+        XCTAssertEqual(device.state.nextProfile, "evening")
+        try device.power(false); try device.power(true); try device.setBrightness(20)
+        XCTAssertEqual(device.state.nextProfile, "evening")
+        let restored = try JSONDecoder().decode(DisplayState.self, from: JSONEncoder().encode(device.state))
+        XCTAssertEqual(restored.nextProfile, "evening")
+        transport.rejectRGB = true
+        XCTAssertThrowsError(try device.apply(Profile(temperature: 3500, brightness: 30), name: "evening"))
+        XCTAssertEqual(device.state.nextProfile, "evening")
+        transport.rejectRGB = false
+        try device.apply(Profile(temperature: 3500, brightness: 30), name: "evening")
+        XCTAssertEqual(device.state.nextProfile, "day")
+        XCTAssertEqual(device.state.temperature, 3500)
+        XCTAssertEqual(device.state.brightness, 30)
+    }
+
     func testParsing() throws {
         XCTAssertEqual(try Command.parse(["day"]), .profile("day", temperature: nil, brightness: nil, save: false))
         XCTAssertEqual(try Command.parse(["evening", "--temp", "3300", "--brightness", "0", "--save"]), .profile("evening", temperature: 3300, brightness: 0, save: true))
@@ -255,6 +281,7 @@ struct Checks {
         let cases: [(String, () throws -> Void)] = [
             ("Parsing", tests.testParsing),
             ("Physical button events", tests.testButtonEvents),
+            ("Mode profile cycling and persistence", tests.testModeProfiles),
             ("Configuration", tests.testConfigurationRoundTripAndCorruption),
             ("Packet boundaries", tests.testPacketBoundaries),
             ("Response validation", tests.testResponseValidation),

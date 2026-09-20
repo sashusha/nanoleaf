@@ -45,7 +45,8 @@ Matching Desktop does not establish instrument-measured color temperature.
 No Nanoleaf Desktop, pairing, or network connection is required.
 Optional service: starts at login, keeps USB online every 3 seconds, and handles
 physical power presses using saved CLI settings. Normal commands route through
-it. Stops USB traffic when disconnected or asleep. Scene presses are ignored.
+it. Stops USB traffic when disconnected or asleep. Mode presses alternate saved
+day/evening profiles, starting with day when no profile has been selected.
 Disable the service before using another lighting controller.
 
 Examples:
@@ -130,7 +131,7 @@ func execute(_ args: [String], transport supplied: HIDTransport? = nil, emit: (S
         try device.power(!device.state.isOn)
     case .brightness(let percent): try device.setBrightness(percent)
     case .temperature(let kelvin): try device.temperature(kelvin)
-    case .profile: try device.apply(selected!)
+    case .profile(let name, _, _, _): try device.apply(selected!, name: name)
     case .help, .config, .status: return
     }
     do { try stateStore.save(device.state, device: transport.identifier) }

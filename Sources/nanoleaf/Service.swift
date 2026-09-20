@@ -124,7 +124,7 @@ final class BackgroundService {
     private var retry: Timer?
     private var busy = false
     private var asleep = false
-    private var buttons = 0
+    private var buttons: [ButtonAction] = []
     private var lastError: String?
     private var manager: IOHIDManager!
     private var observers: [NSObjectProtocol] = []
@@ -138,7 +138,7 @@ final class BackgroundService {
     private func disconnect() {
         timer?.invalidate(); timer = nil
         retry?.invalidate(); retry = nil
-        transport?.onButton = nil; transport = nil; buttons = 0
+        transport?.onButton = nil; transport = nil; buttons.removeAll()
     }
     private func reconcile() {
         guard !busy else { return }
@@ -154,8 +154,9 @@ final class BackgroundService {
             try execute([state?.isOn == true ? "on" : "off"], transport: usb, emit: { _ in })
             transport = usb
             usb.onButton = { [weak self] bytes in
-                guard ButtonEvent.isPowerPress(bytes) else { return }
-                self?.buttons += 1
+                let actions = ButtonEvent.actions(bytes)
+                guard !actions.isEmpty else { return }
+                self?.buttons.append(contentsOf: actions)
                 DispatchQueue.main.async { self?.drainButtons() }
             }
             lastError = nil
@@ -179,16 +180,24 @@ final class BackgroundService {
     }
     private func drainButtons() {
         guard !busy, let usb = transport else { return }
-        while buttons > 0 {
-            buttons -= 1; busy = true
-            do { try execute(["toggle"], transport: usb, emit: { _ in }) }
+        while !buttons.isEmpty {
+            let action = buttons.removeFirst(); busy = true
+            do {
+                let command: String
+                if action == .power { command = "toggle" }
+                else {
+                    let state = try StateStore(url: ServiceIPC.directory.appendingPathComponent("state.json")).load(device: usb.identifier)
+                    command = (state ?? DisplayState()).nextProfile
+                }
+                try execute([command], transport: usb, emit: { _ in })
+            }
             catch { log(error) }
             busy = false
         }
     }
     private func handle(_ args: [String]) -> ServiceReply {
         if args == ["__service_status"] {
-            return ServiceReply(output: transport == nil ? "Waiting for device.\(lastError.map { " Last error: \($0)" } ?? "")" : "Connected. Keepalive: 3 seconds. Physical power handling active.")
+            return ServiceReply(output: transport == nil ? "Waiting for device.\(lastError.map { " Last error: \($0)" } ?? "")" : "Connected. Keepalive: 3 seconds. Physical power and day/evening mode handling active.")
         }
         guard !busy else { return ServiceReply(output: "", error: "Device is busy; retry the command.") }
         var lines: [String] = []

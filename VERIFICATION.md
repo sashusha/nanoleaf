@@ -7,11 +7,12 @@ inspections below were performed by Codex, not independently reviewed by a human
 
 ## Automated checks
 
-All 18 test groups pass, and the release executable builds successfully.
+All 19 test groups pass, and the release executable builds successfully.
 The dependency-free suite covers:
 
 - Argument parsing, ranges, and configuration preservation.
-- Captured power-button events, scene filtering, and malformed event rejection.
+- Captured power-button events, mode-button decoding, and malformed event rejection.
+- Profile cycling, compatibility with existing state, persisted selection, and failed-frame preservation.
 - TLV responses, HID packet boundaries, and reference frame fixtures.
 - Zero/low brightness, temperature changes, and off/on restoration.
 - Saved-state validation and preservation after rejected writes.
@@ -51,6 +52,9 @@ operation after disabling were also checked; the local socket is owner-only.
 An idle process snapshot showed 0.0% CPU and approximately 13 MB resident memory.
 This is not a measurement of battery impact. Sleep/wake behavior is implemented
 but has not been physically verified.
+
+The user also confirmed that the installed service’s mode button alternates
+between the saved evening (3500 K/30%) and day (4500 K/30%) profiles.
 
 ## Scope and limitations
 
