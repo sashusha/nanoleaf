@@ -7,10 +7,11 @@ inspections below were performed by Codex, not independently reviewed by a human
 
 ## Automated checks
 
-All 17 test groups pass, and the release executable builds successfully.
+All 18 test groups pass, and the release executable builds successfully.
 The dependency-free suite covers:
 
 - Argument parsing, ranges, and configuration preservation.
+- Captured power-button events, scene filtering, and malformed event rejection.
 - TLV responses, HID packet boundaries, and reference frame fixtures.
 - Zero/low brightness, temperature changes, and off/on restoration.
 - Saved-state validation and preservation after rejected writes.
@@ -36,6 +37,20 @@ brightness as observed by the user. Codex checked that profile defaults remained
 
 Binary dependency inspection showed only system libraries. Nanoleaf Desktop
 and its libraries are not required at runtime.
+
+## Background service checks
+
+Three-second keepalives maintained online mode during repeated physical power
+presses on the tested strip. With the service handling those events, the user
+confirmed complete darkness and restoration of the same 4000 K/30% white.
+USB unplug/reconnect restored the same setting automatically. Local command
+routing, invalid commands, malformed JSON, and stalled-client handling were
+checked against the running service. Login-service enable/disable and standalone
+operation after disabling were also checked; the local socket is owner-only.
+
+An idle process snapshot showed 0.0% CPU and approximately 13 MB resident memory.
+This is not a measurement of battery impact. Sleep/wake behavior is implemented
+but has not been physically verified.
 
 ## Scope and limitations
 

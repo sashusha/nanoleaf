@@ -2,6 +2,19 @@ import Foundation
 import NanoleafCore
 
 final class CoreTests {
+    func testButtonEvents() {
+        // Captured NL82K2 firmware 1.5.0 power event, including HID padding.
+        let power: [UInt8] = [0x85, 0, 4, 0, 1, 1, 0]
+        XCTAssertTrue(ButtonEvent.isPowerPress(power + Array(repeating: 0, count: 57)))
+        XCTAssertTrue(ButtonEvent.isPowerPress([0x85, 0, 4, 0, 2, 1, 0]))
+        XCTAssertTrue(ButtonEvent.isPowerPress([0x85, 0, 4, 0, 3, 1, 0]))
+        XCTAssertTrue(!ButtonEvent.isPowerPress([0x85, 0, 4, 0, 0, 1, 1]))
+        XCTAssertTrue(!ButtonEvent.isPowerPress([0x86, 0, 2, 0, 1]))
+        XCTAssertTrue(!ButtonEvent.isPowerPress([0x85, 0, 4, 0, 4, 1, 0]))
+        XCTAssertTrue(!ButtonEvent.isPowerPress([0x85, 0, 6, 0, 1, 1, 0]))
+        for count in 0..<power.count { XCTAssertTrue(!ButtonEvent.isPowerPress(Array(power.prefix(count)))) }
+    }
+
     func testParsing() throws {
         XCTAssertEqual(try Command.parse(["day"]), .profile("day", temperature: nil, brightness: nil, save: false))
         XCTAssertEqual(try Command.parse(["evening", "--temp", "3300", "--brightness", "0", "--save"]), .profile("evening", temperature: 3300, brightness: 0, save: true))
@@ -241,6 +254,7 @@ struct Checks {
         let tests = CoreTests()
         let cases: [(String, () throws -> Void)] = [
             ("Parsing", tests.testParsing),
+            ("Physical button events", tests.testButtonEvents),
             ("Configuration", tests.testConfigurationRoundTripAndCorruption),
             ("Packet boundaries", tests.testPacketBoundaries),
             ("Response validation", tests.testResponseValidation),

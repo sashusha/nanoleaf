@@ -42,10 +42,11 @@ Initial defaults: **day 4800 K/30%**, **evening 3500 K/30%**. Brightness accepts
 | `temp K` | Set the temperature and turn on at the remembered nonzero brightness. |
 | `day` / `evening` | Apply that profile's saved values, with any supplied overrides. Positive brightness turns on; zero sends black. |
 | `config` | Show effective profile defaults and their file path. Does not require the device. |
-| `status` | Query the connected zone count and show the last saved CLI setting, including remembered on brightness. |
+| `status` | Show connected zone count, calibration, and the last saved CLI setting. |
+| `service enable` / `disable` / `status` | Manage optional background control and login startup. |
 | `help`, `--help`, `-h`, or no arguments | Show help without accessing the device or configuration. |
 
-All commands except help and `config` require a connected device. Help flags are top-level commands; `nanoleaf day --help` is not supported.
+Light commands and `status` require a connected device. Help, `config`, and service management work without one. Help flags are top-level commands; `nanoleaf day --help` is not supported.
 
 ### Profiles and remembered settings
 
@@ -70,6 +71,45 @@ JSON files are written atomically, but applying the frame, saving restore state,
 
 `status` identifies the active color conversion and reports the **last CLI setting**, not a measurement of the LEDs. With no saved state it reports that the setting is unknown. Buttons, other controllers, unplugging, or power loss can make saved state stale; `toggle` still operates on that saved state. Commands cannot recover the color previously set by another app or a controller button. An acknowledged frame confirms delivery, not its physical appearance.
 
+## Optional background service
+
+Enable physical power-button control of the CLI setting:
+
+```sh
+nanoleaf service enable
+nanoleaf service status
+nanoleaf service disable
+```
+
+The service runs the same executable as a per-user macOS LaunchAgent and starts
+at login. It needs no administrator access. Normal light commands automatically
+route through a private local Unix socket to the service, which owns the USB
+connection. There is no network listener.
+
+While connected, a three-second keepalive maintains online mode. Physical power
+presses toggle black and the remembered CLI color/brightness, updating saved
+state. Scene-button presses are ignored. Entering online mode stops built-in
+color cycling; use `service disable` to return to the strip's standalone controls.
+
+At startup and after reconnection, the service applies saved CLI state. Without
+saved state, it starts off with 4800 K/30% remembered for the next power press.
+It uses a timer and USB callbacks, stops keepalives when disconnected or asleep,
+and reconnects after wake. It does not prevent Mac sleep. Physical controls
+revert to device behavior when the service cannot keep the strip online.
+
+Quit Nanoleaf Desktop before enabling the service, and disable the service before
+using another lighting controller. If another process holds the device, the
+service reports the error and retries every 30 seconds while the device is present.
+An enabled but unreachable service produces an error instead of silently opening
+a competing USB connection.
+
+The login configuration is
+`~/Library/LaunchAgents/io.github.sashusha.nanoleaf.plist`.
+It records the executable's absolute path; rerun `service enable` after moving or
+replacing the executable. Runtime files `service.sock`, `.service-lock`, and
+`service.log` are under the configuration directory. The log records errors, not
+routine keepalives. Disabling removes the login configuration and preserves settings.
+
 ## USB operation
 
 The CLI sends solid-color frames using command `0x02` and queries the zone count
@@ -81,8 +121,8 @@ Messages use TLV framing and 64-byte HID reports. Protocol reference:
 [Nanoleaf USB Lightstrip Communication Protocol](https://nanoleaf.atlassian.net/wiki/spaces/nlapid/pages/2615574530/Nanoleaf+USB+Lightstrip+Communication+Protocol).
 Streaming conventions are based on the vendor implementation and device testing.
 
-Quit other lighting controllers before use. The CLI opens the USB device directly
-and exits after its frame is acknowledged; no daemon is required. It refuses
+In standalone mode the CLI opens the USB device directly and exits after its
+frame is acknowledged. The optional service keeps the connection open. Both refuse
 multiple matching devices rather than choosing one arbitrarily.
 
 ## Build and checks

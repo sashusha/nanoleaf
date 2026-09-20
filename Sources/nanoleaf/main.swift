@@ -15,6 +15,7 @@ Commands:
   evening [options]      Apply saved evening defaults (initially 3500 K, 30%)
   config                 Show profile defaults and their file path; no device needed
   status                 Show last CLI setting and connected LED zone count
+  service enable|disable|status  Manage optional background control
   help | --help | -h     Show this help; no arguments also shows help
 
 Options for day/evening only (use a space before each value):
@@ -36,12 +37,16 @@ Files under ~/Library/Application Support/nanoleaf/:
   calibration.json       Optional hardware calibration override
 
 status and toggle use saved CLI state, not measured LED state. Buttons, other
-controllers, and power loss can make it stale. All commands except help and
-config require a connected device. Quit other lighting controllers before use.
+controllers, and power loss can make it stale. Light commands and status require
+a connected device. Quit other lighting controllers before use.
 Calibration matches model and hardware revision exactly; status shows the match.
 Without a match, temperature uses approximate RGB white.
 Matching Desktop does not establish instrument-measured color temperature.
-No Nanoleaf Desktop, pairing, network connection, or daemon is required.
+No Nanoleaf Desktop, pairing, or network connection is required.
+Optional service: starts at login, keeps USB online every 3 seconds, and handles
+physical power presses using saved CLI settings. Normal commands route through
+it. Stops USB traffic when disconnected or asleep. Scene presses are ignored.
+Disable the service before using another lighting controller.
 
 Examples:
   nanoleaf day
@@ -51,8 +56,9 @@ Examples:
   nanoleaf on
 """
 
-func run() throws {
-    let command = try Command.parse(Array(CommandLine.arguments.dropFirst()))
+func execute(_ args: [String], transport supplied: HIDTransport? = nil, emit: (String) -> Void = { Swift.print($0) }) throws {
+    let print = emit
+    let command = try Command.parse(args)
     if command == .help { print(help); return }
     let store = ConfigStore()
     // Serialize profile read/modify/write and device transactions across CLI processes.
@@ -80,7 +86,7 @@ func run() throws {
         if let brightness { profile.brightness = brightness }
         try profile.validate(); selected = profile
     }
-    let transport = try HIDTransport()
+    let transport = try supplied ?? HIDTransport()
     let stateStore = StateStore(url: store.url.deletingLastPathComponent().appendingPathComponent("state.json"))
     let savedState = try stateStore.load(device: transport.identifier)
     let calibrationStore = CalibrationStore(url: store.url.deletingLastPathComponent().appendingPathComponent("calibration.json"))
@@ -140,6 +146,20 @@ func run() throws {
     printCalibration()
     if case .profile(_, _, _, true) = command { print("Profile defaults saved.") }
 
+}
+
+func run() throws {
+    let args = Array(CommandLine.arguments.dropFirst())
+    if args.first == "service" { try ServiceControl.run(Array(args.dropFirst())); return }
+    let command = try Command.parse(args)
+    if command == .help || command == .config { try execute(args); return }
+    if ServiceControl.isEnabled {
+        let reply = try ServiceIPC.call(args)
+        if !reply.output.isEmpty { print(reply.output) }
+        if let error = reply.error { throw CLIError(error) }
+        return
+    }
+    try execute(args)
 }
 
 do { try run() }

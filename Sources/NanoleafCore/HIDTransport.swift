@@ -5,14 +5,21 @@ private final class Inbox {
     var expected: UInt8 = 0
     var report: [UInt8]?
     var failure: IOReturn?
+    var button: (([UInt8]) -> Void)?
+    var waiting = false
 }
 
 private let receive: IOHIDReportCallback = { context, result, _, _, _, bytes, count in
     guard let context else { return }
     let inbox = Unmanaged<Inbox>.fromOpaque(context).takeUnretainedValue()
     guard result == kIOReturnSuccess else { inbox.failure = result; return }
-    guard count > 0, bytes[0] == inbox.expected else { return }
+    if count > 0, bytes[0] == 0x85 {
+        inbox.button?(Array(UnsafeBufferPointer(start: bytes, count: count)))
+        return
+    }
+    guard inbox.waiting, count > 0, bytes[0] == inbox.expected else { return }
     inbox.report = Array(UnsafeBufferPointer(start: bytes, count: count))
+    CFRunLoopStop(CFRunLoopGetCurrent())
 }
 
 public final class HIDTransport: Transport {
@@ -22,6 +29,11 @@ public final class HIDTransport: Transport {
     private let buffer: UnsafeMutablePointer<UInt8>
     private let runLoop: CFRunLoop
     private let reportSize: Int
+
+    public var onButton: (([UInt8]) -> Void)? {
+        get { inbox.button }
+        set { inbox.button = newValue }
+    }
 
     public var identifier: String {
         (IOHIDDeviceGetProperty(device, kIOHIDSerialNumberKey as CFString) as? String) ?? "37FA-8202"
@@ -69,6 +81,8 @@ public final class HIDTransport: Transport {
         buffer.deallocate()
     }
     public func request(_ command: UInt8, payload: [UInt8], valueCount: Int) throws -> [UInt8] {
+        inbox.waiting = true
+        defer { inbox.waiting = false }
         inbox.expected = command | 0x80; inbox.report = nil; inbox.failure = nil
         for report in try Wire.reports(command: command, payload: payload, size: reportSize) {
             let result = report.withUnsafeBufferPointer {
@@ -82,7 +96,7 @@ public final class HIDTransport: Transport {
         while ProcessInfo.processInfo.systemUptime < deadline {
             if let code = inbox.failure { throw CLIError("USB read failed (\(code)).") }
             if let bytes = inbox.report { return try Wire.response(bytes, command: command, valueCount: valueCount) }
-            CFRunLoopRunInMode(.defaultMode, 0.01, true)
+            CFRunLoopRunInMode(.defaultMode, max(0, deadline - ProcessInfo.processInfo.systemUptime), true)
         }
         throw CLIError("Timed out waiting for Nanoleaf command \(String(format: "0x%02X", command)). Check the connection and quit other lighting apps.")
     }
