@@ -63,22 +63,20 @@ JSON files are written atomically, but applying the frame, saving restore state,
 
 `status` identifies the active color conversion and reports the **last CLI setting**, not a measurement of the LEDs. With no saved state it reports that the setting is unknown. Buttons, other controllers, unplugging, or power loss can make saved state stale; `toggle` still operates on that saved state. Commands cannot recover the color previously set by another app or a controller button. An acknowledged frame confirms delivery, not its physical appearance.
 
-## Corrected USB behavior
+## USB operation
 
-The original implementation used the documented native power and brightness commands and plain RGB values. Those received valid acknowledgements but did **not** produce the intended LED output on this device. The earlier claim that those commands were physically verified was incorrect.
+The CLI sends solid-color frames using command `0x02` and queries the zone count
+with `0x03`. Frames use GRB channel order, a channel range of 15–255, and
+brightness scaled into each frame. `[15,15,15]` per zone produces black.
+See [calibration](CALIBRATION.md) for color conversion and rounding.
 
-Inspection of the locally installed vendor app's USB implementation established its streaming convention:
+Messages use TLV framing and 64-byte HID reports. Protocol reference:
+[Nanoleaf USB Lightstrip Communication Protocol](https://nanoleaf.atlassian.net/wiki/spaces/nlapid/pages/2615574530/Nanoleaf+USB+Lightstrip+Communication+Protocol).
+Streaming conventions are based on the vendor implementation and device testing.
 
-- Channel order is **GRB**.
-- Generic channel encoding is `round(15 + 240 × color/255 × brightness/100)`. With a matching calibration, brightness-scaled RGB is rounded to integer bytes first, then mapped to the 15–255 channel range, matching Desktop's two-stage rounding.
-- Black is `[15,15,15]` for every zone.
-- Brightness is scaled into every frame; the native brightness getter is not used as a proxy for emitted brightness.
-
-The CLI sends complete solid-color frames using command 0x02, querying zone count with 0x03. It does not send 0x07/0x09 power or brightness writes. It retains the already working TLV framing and 64-byte HID report fragmentation. Black, day white at 30%, and day white at 10% were physically confirmed by the user during diagnosis. The generic approximation can look bluer than Desktop at the same nominal Kelvin. The included hardware 1.1.0 profile supplies matching RGB values. Vendor libraries are not included or required.
-
-Protocol reference: [Nanoleaf USB Lightstrip Communication Protocol](https://nanoleaf.atlassian.net/wiki/spaces/nlapid/pages/2615574530/Nanoleaf+USB+Lightstrip+Communication+Protocol). The streaming details above come from the vendor implementation and device testing; the public protocol page alone does not establish them.
-
-Quit other lighting controllers before use. The CLI opens the USB device directly and exits after its frame is acknowledged; no daemon is required. It refuses multiple matching devices rather than choosing one arbitrarily.
+Quit other lighting controllers before use. The CLI opens the USB device directly
+and exits after its frame is acknowledged; no daemon is required. It refuses
+multiple matching devices rather than choosing one arbitrarily.
 
 ## Build and checks
 
@@ -93,9 +91,9 @@ install -m 755 .build/release/nanoleaf "$HOME/.local/bin/nanoleaf"
 
 `~/.local/bin` must be on your PATH. The native build-system flag matches the locally verified build; this Swift toolchain emits a deprecation warning for it.
 
-The dependency-free checks work with Apple's Command Line Tools without XCTest. They cover argument ranges, configuration preservation, frame fixtures from the visual probes, zero/low brightness, off/on restoration across invocations, malformed replies, packet boundaries, and failed-write state preservation.
+The dependency-free checks work with Apple's Command Line Tools without XCTest. They cover argument ranges, configuration preservation, reference frame fixtures, zero/low brightness, off/on restoration across invocations, malformed replies, packet boundaries, and failed-write state preservation.
 
-See `VERIFICATION.md` for the current verification evidence and limitations.
+See [VERIFICATION.md](VERIFICATION.md) for the current verification evidence and limitations.
 
 ## License and attribution
 
@@ -114,7 +112,7 @@ hardware match. Every light-changing command and `status` identify the selected
 profile and whether the connected firmware is listed as tested. Other revisions
 fall back to the generic approximation with an explicit message.
 
-Profiles contain no device serial or source field. See [CALIBRATION.md](CALIBRATION.md)
+Profiles are shared by hardware revision. See [CALIBRATION.md](CALIBRATION.md)
 for the schema, optional local overrides, rebuilding embedded profiles, provenance,
 and limitations. Matching profiles are embedded in the executable; installing
 Nanoleaf Desktop or a separate calibration file is not required.

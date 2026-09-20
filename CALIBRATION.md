@@ -40,9 +40,8 @@ Each file in `calibrations/` is one profile with:
 | `temperatureRange` | `min: 2700`, `max: 6500`, `step: 1`. |
 | `rgbByKelvin` | 3,801 RGB triples, one per integer Kelvin from 2700 through 6500. Each channel is an integer 0–255, before brightness scaling. |
 
-Profiles contain no serial number or source field. They can be shared between
-units with the same hardware revision. The command output identifies the
-calibration revision and tested firmware, with no source line.
+Profiles can be shared between units with the same hardware revision. Command
+output identifies the selected profile, hardware revision, and tested firmware.
 
 ## Standalone builds
 
@@ -70,10 +69,6 @@ tries embedded profiles; if neither matches, it uses the generic approximation.
 Multiple exact matches within a set are rejected rather than selected arbitrarily.
 Malformed files/profiles are reported rather than silently ignored.
 
-The previous serial-keyed local format is still readable for compatibility:
-it requires the same serial **and** an exact hardware revision match. Its old
-source field is ignored. New files should use the shareable schema above.
-
 Profiles do not change `config.json` defaults or `state.json` restore settings.
 Changing a calibration changes the rendered RGB the next time a command applies
 the remembered temperature. `status` identifies the current matching profile,
@@ -87,15 +82,14 @@ For each calibrated RGB channel `c` and brightness `b`:
 2. `encoded = round(15 + 240 * scaled / 255)`
 3. Send channels in **GRB** order for every zone.
 
-Zero brightness still produces `[15,15,15]`, the black frame. All light-changing
-commands share this conversion. Without calibration, the original generic
-approximation and its single-stage rounding are retained.
+Zero brightness produces `[15,15,15]`, the black frame. All light-changing
+commands share this conversion. Without calibration, the generic approximation uses single-stage rounding:
+`encoded = round(15 + 240 * c / 255 * b / 100)`.
 
 The profile's numerical values were sampled from the installed Desktop 2.5.0
-calibration implementation for this hardware during diagnosis. This repository
-does not include Nanoleaf application code or libraries. Removing the source
-field from the profile does not change the data's origin; the project's MIT
-license does not itself establish rights in third-party material.
+calibration implementation for this hardware. This repository does not include
+Nanoleaf application code or libraries. The project's MIT license does not itself
+establish rights in third-party material.
 
 Matching Desktop's output is not a colorimeter measurement. Kelvin remains a
 requested setting, not proof of the emitted light's physical CCT. Hardware,
