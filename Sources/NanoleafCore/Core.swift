@@ -103,7 +103,8 @@ public enum Wire {
     }
     public static func brightness(_ percent: Int) -> UInt8 { UInt8((Double(percent) * 255 / 100).rounded()) }
     public static func rgb(kelvin: Int) -> [UInt8] {
-        // Approximate black-body sRGB, not calibrated CCT on this RGB lightstrip.
+        // Adapted from Tanner Helland's BSD-2-Clause Kelvin-to-RGB approximation.
+        // See THIRD_PARTY_NOTICES.md. Not calibrated CCT on this RGB lightstrip.
         let t = Double(kelvin) / 100
         func byte(_ n: Double) -> UInt8 { UInt8(max(0, min(255, n.rounded()))) }
         return [255, byte(99.4708025861 * log(t) - 161.1195681661),

@@ -2,6 +2,8 @@
 
 Native macOS Swift CLI for Nanoleaf PC Screen Mirror Lightstrip NL82K2 (USB 37FA:8202). No third-party package or Nanoleaf Desktop runtime dependency.
 
+Independent project, not affiliated with or endorsed by Nanoleaf. Licensed under [MIT](LICENSE), with the retained attribution in [third-party notices](THIRD_PARTY_NOTICES.md).
+
 ## Usage
 
 ```sh
@@ -88,8 +90,17 @@ mkdir -p "$HOME/.local/bin"
 install -m 755 .build/release/nanoleaf "$HOME/.local/bin/nanoleaf"
 ```
 
-`~/.local/bin` must be on your PATH; it is already configured on this Mac. The native build-system flag matches the locally verified build; this Swift toolchain emits a deprecation warning for it.
+`~/.local/bin` must be on your PATH. The native build-system flag matches the locally verified build; this Swift toolchain emits a deprecation warning for it.
 
 The dependency-free checks work with Apple's Command Line Tools without XCTest. They cover argument ranges, configuration preservation, frame fixtures from the visual probes, zero/low brightness, off/on restoration across invocations, malformed replies, packet boundaries, and failed-write state preservation.
 
 See `VERIFICATION.md` for the current verification evidence and limitations.
+
+## License and attribution
+
+Copyright (c) 2026 Alexander Vladimirov.
+
+Project code is available under the [MIT License](LICENSE). The Kelvin-to-RGB
+adaptation retains Tanner Helland's BSD 2-Clause notice; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Retain the applicable license
+and attribution notices when redistributing source or binaries.
