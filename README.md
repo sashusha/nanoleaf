@@ -123,6 +123,25 @@ replacing the executable. Runtime files `service.sock`, `.service-lock`, and
 `service.log` are under the configuration directory. The log records errors, not
 routine keepalives. Disabling removes the login configuration and preserves settings.
 
+## Keyboard brightness shortcuts
+
+With the service running, **Shift + display Brightness Up/Down** changes the strip
+by 5 percentage points, clamped to 0–100. Allow the installed `nanoleaf` executable
+in System Settings → Privacy & Security → Accessibility, then run
+`nanoleaf service status` to activate the listener and check its status.
+No Keychron remapping or additional helper app is required.
+
+Only Shift plus a display-brightness media key is intercepted; plain brightness
+keys and combinations with Control, Option, Command, or Fn pass through.
+Captured presses are consumed so they do not also adjust the display.
+Holding a key repeats the adjustment. The function row must emit brightness
+keys rather than F1/F2. The shortcuts apply across keyboards.
+
+`nanoleaf brightness up` and `nanoleaf brightness down` perform the same steps
+without needing keyboard permission. Up from off turns on at 5%; down from off
+has no effect. Temperature and saved profile defaults are preserved.
+Without Accessibility permission, USB service and CLI commands still work.
+
 ## USB operation
 
 The CLI sends solid-color frames using command `0x02` and queries the zone count

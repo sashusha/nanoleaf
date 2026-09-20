@@ -70,3 +70,10 @@ instrument measurement of color temperature.
 a button, or power loss can make those settings stale. A frame acknowledgement
 confirms delivery, not physical appearance. These verification results are test
 evidence, not a live reading of the connected strip.
+
+## Keyboard brightness shortcuts
+
+Relative-brightness checks cover parsing, limits, off behavior, temperature
+preservation, and failed-write state preservation. The user confirmed that two Shift + Brightness Up presses followed by two
+Shift + Brightness Down presses brighten the strip and restore its original
+level without changing monitor brightness, using the installed service.

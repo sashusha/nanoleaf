@@ -119,6 +119,7 @@ enum ServiceControl {
 }
 
 final class BackgroundService {
+    private let brightnessKeys = BrightnessKeys()
     private var transport: HIDTransport?
     private var timer: Timer?
     private var retry: Timer?
@@ -201,7 +202,9 @@ final class BackgroundService {
     }
     private func handle(_ args: [String]) -> ServiceReply {
         if args == ["__service_status"] {
-            return ServiceReply(output: transport == nil ? "Waiting for device.\(lastError.map { " Last error: \($0)" } ?? "")" : "Connected. Keepalive: 3 seconds. Physical power and day/evening mode handling active.")
+            brightnessKeys.start()
+            let deviceStatus = transport == nil ? "Waiting for device.\(lastError.map { " Last error: \($0)" } ?? "")" : "Connected. Keepalive: 3 seconds. Physical power and day/evening mode handling active."
+            return ServiceReply(output: deviceStatus + "\n" + brightnessKeys.status)
         }
         guard !busy else { return ServiceReply(output: "", error: "Device is busy; retry the command.") }
         var lines: [String] = []
@@ -260,6 +263,12 @@ final class BackgroundService {
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [self] _ in asleep = true; disconnect() })
         observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [self] _ in asleep = false; reconcile() })
+        brightnessKeys.onStep = { [weak self] delta in
+            guard let self else { return }
+            let reply = self.handle(["brightness", delta > 0 ? "up" : "down"])
+            if let error = reply.error { self.log(CLIError(error)) }
+        }
+        brightnessKeys.start()
         reconcile()
         // HID replies may stop a nested run loop; return to waiting without periodic polling.
         while true { CFRunLoopRun() }

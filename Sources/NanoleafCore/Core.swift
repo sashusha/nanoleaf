@@ -46,7 +46,7 @@ public struct ConfigStore {
 
 public enum Command: Equatable {
     case help, config, status, on, off, toggle
-    case brightness(Int), temperature(Int)
+    case brightness(Int), temperature(Int), brightnessStep(Int)
     case profile(String, temperature: Int?, brightness: Int?, save: Bool)
 
     public static func parse(_ args: [String]) throws -> Command {
@@ -58,6 +58,8 @@ public enum Command: Equatable {
             return ["help": .help, "--help": .help, "-h": .help, "config": .config,
                     "status": .status, "on": .on, "off": .off, "toggle": .toggle][name]!
         case "brightness", "temp":
+            if name == "brightness", rest == ["up"] { return .brightnessStep(5) }
+            if name == "brightness", rest == ["down"] { return .brightnessStep(-5) }
             guard rest.count == 1, let n = Int(rest[0]) else { throw CLIError("\(name) requires one integer.") }
             if name == "brightness" {
                 try Profile(temperature: 4800, brightness: n).validate(); return .brightness(n)
@@ -201,6 +203,13 @@ public final class Lightstrip {
         var next = state; next.isOn = percent > 0
         if percent > 0 { next.brightness = percent }
         try display(next)
+    }
+    public func stepBrightness(_ delta: Int) throws {
+        guard delta == 5 || delta == -5 else { throw CLIError("Brightness step must be +5 or -5.") }
+        let current = state.isOn ? state.brightness : 0
+        let next = max(0, min(100, current + delta))
+        guard next != current else { return }
+        try setBrightness(next)
     }
     public func temperature(_ kelvin: Int) throws {
         var next = state; next.temperature = kelvin; next.isOn = true

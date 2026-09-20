@@ -10,6 +10,7 @@ Commands:
   off                    Display black; keep remembered settings for on
   toggle                 Switch the saved CLI on/off state; requires prior state
   brightness <0-100>     Set integer brightness; positive turns on, zero blanks
+  brightness up|down     Adjust by 5 percentage points, clamped to 0–100
   temp <2700-6500>       Set integer Kelvin; turn on at remembered brightness
   day [options]          Apply saved day defaults (initially 4800 K, 30%)
   evening [options]      Apply saved evening defaults (initially 3500 K, 30%)
@@ -48,6 +49,9 @@ physical power presses using saved CLI settings. Normal commands route through
 it. Stops USB traffic when disconnected or asleep. Mode presses alternate saved
 day/evening profiles, starting with day when no profile has been selected.
 USB reconnection turns on at remembered color/brightness, even after offline off.
+Shift + Brightness Up/Down adjusts by 5 percentage points with Accessibility
+permission. Run service status after granting permission to activate shortcuts.
+Brightness up from off starts at 5%; down from off does nothing.
 Disable the service before using another lighting controller.
 
 Examples:
@@ -131,6 +135,7 @@ func execute(_ args: [String], transport supplied: HIDTransport? = nil, emit: (S
         guard savedState != nil else { throw CLIError("No previous CLI state for toggle. Run on, off, day, or evening first.") }
         try device.power(!device.state.isOn)
     case .brightness(let percent): try device.setBrightness(percent)
+    case .brightnessStep(let delta): try device.stepBrightness(delta)
     case .temperature(let kelvin): try device.temperature(kelvin)
     case .profile(let name, _, _, _): try device.apply(selected!, name: name)
     case .help, .config, .status: return

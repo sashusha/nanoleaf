@@ -2,6 +2,29 @@ import Foundation
 import NanoleafCore
 
 final class CoreTests {
+    func testBrightnessSteps() throws {
+        XCTAssertEqual(try Command.parse(["brightness", "up"]), .brightnessStep(5))
+        XCTAssertEqual(try Command.parse(["brightness", "down"]), .brightnessStep(-5))
+        let transport = FakeTransport()
+        let device = Lightstrip(transport: transport, state: DisplayState(temperature: 4000, brightness: 98, isOn: true))
+        try device.stepBrightness(5)
+        XCTAssertEqual(device.state.brightness, 100)
+        try device.stepBrightness(5)
+        XCTAssertEqual(device.state.brightness, 100)
+        try device.setBrightness(3)
+        try device.stepBrightness(-5)
+        XCTAssertTrue(!device.state.isOn)
+        try device.stepBrightness(-5)
+        XCTAssertTrue(!device.state.isOn)
+        try device.stepBrightness(5)
+        XCTAssertEqual(device.state.brightness, 5)
+        XCTAssertTrue(device.state.isOn)
+        XCTAssertEqual(device.state.temperature, 4000)
+        transport.rejectRGB = true
+        XCTAssertThrowsError(try device.stepBrightness(5))
+        XCTAssertEqual(device.state.brightness, 5)
+    }
+
     func testButtonEvents() {
         // Captured NL82K2 firmware 1.5.0 power event, including HID padding.
         let power: [UInt8] = [0x85, 0, 4, 0, 1, 1, 0]
@@ -298,6 +321,7 @@ struct Checks {
         let tests = CoreTests()
         let cases: [(String, () throws -> Void)] = [
             ("Parsing", tests.testParsing),
+            ("Relative brightness", tests.testBrightnessSteps),
             ("Physical button events", tests.testButtonEvents),
             ("Mode profile cycling and persistence", tests.testModeProfiles),
             ("Reconnect power policy", tests.testReconnectPowerPolicy),
