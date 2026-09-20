@@ -49,3 +49,15 @@ at 10% → 30%. The sequence was repeated with five seconds at each step; the us
 the Desktop-matched white, visible dimming, complete darkness, and correct
 off/on restoration. Profile defaults were verified unchanged. Binary dependency inspection
 showed only system libraries; no Nanoleaf library is loaded by the CLI.
+
+
+## Shareable hardware profile
+
+The locally checked samples were converted without changing their RGB values to
+`calibrations/nl82k2-hw-1.1.0.json`. The profile identifies NL82K2 hardware 1.1.0
+and lists firmware 1.5.0 as tested. It contains no serial number or source field.
+Earlier references above to calibration remaining local describe the previous
+implementation. The new profile is embedded for standalone use and selected by
+live model/hardware revision. No new visual color change is intended.
+
+Validation of the shareable profile: all 17 test groups pass; release build succeeds; embedded generation is deterministic. The installed CLI read the connected NL82K2 as hardware 1.1.0, firmware 1.5.0, and selected `nl82k2-hw-1.1.0` without a local override. All 3,801 RGB samples equal the previously visually verified local calibration. This update was checked using read-only status; no new physical color claim is made.

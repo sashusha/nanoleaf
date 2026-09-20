@@ -42,8 +42,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 This project implements USB protocol behavior documented by Nanoleaf and
 streaming conventions established through inspection of its installed desktop
 application and physical device tests. Nanoleaf application source files,
-binaries, proprietary calibration tables, and libraries are not distributed
-with this project. The implementation does not load them at runtime.
+binaries, and libraries are not distributed with this project or loaded at runtime.
+The included numerical hardware profile and its provenance are described in
+[CALIBRATION.md](CALIBRATION.md).
 
 Nanoleaf is referenced only to identify compatible hardware. This project is
 independent and is not affiliated with or endorsed by Nanoleaf.

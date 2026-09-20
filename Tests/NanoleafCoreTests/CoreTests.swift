@@ -107,7 +107,7 @@ final class CoreTests {
         XCTAssertEqual(Array(fake.rgb.prefix(3)), [36, 39, 34])
     }
     func testCalibratedFrameScaling() throws {
-        let calibration = try Calibration(source: "synthetic test", hardwareVersion: "test",
+        let calibration = try Calibration(id: "synthetic test", hardwareVersion: "test",
             rgbByKelvin: Array(repeating: [255,128,64], count: 3801))
         XCTAssertEqual(try Frame.zone(kelvin: 4000, brightness: 30, calibration: calibration), [51,87,33])
         XCTAssertEqual(try Frame.zone(kelvin: 4000, brightness: 10, calibration: calibration), [27,39,21])
@@ -117,34 +117,63 @@ final class CoreTests {
     func testCalibrationValidationAndBounds() throws {
         var samples = Array(repeating: [255,128,64], count: 3801)
         samples[0] = [1,2,3]; samples[3800] = [4,5,6]
-        let c = try Calibration(source: "test", hardwareVersion: "test", rgbByKelvin: samples)
+        let c = try Calibration(id: "test", hardwareVersion: "test", rgbByKelvin: samples)
         XCTAssertEqual(try c.rgb(kelvin: 2700), [1,2,3])
         XCTAssertEqual(try c.rgb(kelvin: 6500), [4,5,6])
         XCTAssertThrowsError(try c.rgb(kelvin: 2699))
         XCTAssertThrowsError(try c.rgb(kelvin: 6501))
-        XCTAssertThrowsError(try Calibration(source: "test", hardwareVersion: "test", rgbByKelvin: []))
+        XCTAssertThrowsError(try Calibration(id: "test", hardwareVersion: "test", rgbByKelvin: []))
         samples[100] = [256,0,0]
-        XCTAssertThrowsError(try Calibration(source: "test", hardwareVersion: "test", rgbByKelvin: samples))
+        XCTAssertThrowsError(try Calibration(id: "test", hardwareVersion: "test", rgbByKelvin: samples))
         samples[100] = [0,0]
-        XCTAssertThrowsError(try Calibration(source: "test", hardwareVersion: "test", rgbByKelvin: samples))
+        XCTAssertThrowsError(try Calibration(id: "test", hardwareVersion: "test", rgbByKelvin: samples))
     }
     func testCalibrationStoreMatchesDevice() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = CalibrationStore(url: dir.appendingPathComponent("calibration.json"))
-        XCTAssertTrue(try store.load(device: "a") == nil)
-        let c = try Calibration(source: "synthetic", hardwareVersion: "test", rgbByKelvin: Array(repeating: [255,128,64], count: 3801))
-        try JSONEncoder().encode(["a":c]).write(to: store.url)
-        XCTAssertEqual(try store.load(device: "a")?.rgb(kelvin: 4000), [255,128,64])
-        XCTAssertTrue(try store.load(device: "b") == nil)
+        let unknown = HardwareIdentity(hardwareVersion: "test")
+        XCTAssertTrue(try store.load(hardware: unknown, serial: "a") == nil)
+        let c = try Calibration(id: "synthetic", hardwareVersion: "test", rgbByKelvin: Array(repeating: [255,128,64], count: 3801))
+        try JSONEncoder().encode(c).write(to: store.url)
+        XCTAssertEqual(try store.load(hardware: unknown, serial: "a")?.rgb(kelvin: 4000), [255,128,64])
+        // New profiles are reusable on another unit with the same hardware.
+        XCTAssertEqual(try store.load(hardware: unknown, serial: "b")?.id, "synthetic")
+        XCTAssertTrue(try store.load(hardware: HardwareIdentity(hardwareVersion: "1.0.0"), serial: "a") == nil)
+        try JSONEncoder().encode([c,c]).write(to: store.url)
+        XCTAssertThrowsError(try store.load(hardware: unknown, serial: "a"))
         try Data("{invalid".utf8).write(to: store.url)
-        XCTAssertThrowsError(try store.load(device: "a"))
-        try Data("{\"a\":{\"source\":\"test\",\"hardwareVersion\":\"test\",\"rgbByKelvin\":[]}}".utf8).write(to: store.url)
-        XCTAssertThrowsError(try store.load(device: "a"))
+        XCTAssertThrowsError(try store.load(hardware: unknown, serial: "a"))
+    }
+    func testBundledHardwareProfile() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = CalibrationStore(url: dir.appendingPathComponent("absent.json"))
+        let c = try store.load(hardware: HardwareIdentity(hardwareVersion: "1.1.0", firmwareVersion: "9.9.0"), serial: "any-unit")
+        XCTAssertEqual(c?.id, "nl82k2-hw-1.1.0")
+        XCTAssertEqual(c?.testedFirmwareVersions, ["1.5.0"])
+        XCTAssertTrue(try store.load(hardware: HardwareIdentity(hardwareVersion: "1.0.0"), serial: "any-unit") == nil)
+        XCTAssertTrue(try store.load(hardware: HardwareIdentity(model: "OTHER", hardwareVersion: "1.1.0"), serial: "any-unit") == nil)
+        XCTAssertEqual(try c?.rgb(kelvin: 4000), [255,210,109])
+        XCTAssertEqual(try Frame.zone(kelvin: 4000, brightness: 30, calibration: c), [74,87,46])
+        let encoded = try JSONEncoder().encode(c!)
+        let json = String(decoding: encoded, as: UTF8.self)
+        XCTAssertTrue(!json.contains("source"))
+        XCTAssertTrue(!json.contains("serial"))
+    }
+    func testLegacyCalibrationCompatibility() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = CalibrationStore(url: dir.appendingPathComponent("calibration.json"))
+        let old: [String:Any] = ["a": ["source":"old optional field", "hardwareVersion":"test", "rgbByKelvin":Array(repeating:[255,128,64],count:3801)]]
+        try JSONSerialization.data(withJSONObject:old).write(to:store.url)
+        XCTAssertEqual(try store.load(hardware:HardwareIdentity(hardwareVersion:"test"),serial:"a")?.id,"legacy-local")
+        XCTAssertTrue(try store.load(hardware:HardwareIdentity(hardwareVersion:"different"),serial:"a") == nil)
+        XCTAssertTrue(try store.load(hardware:HardwareIdentity(hardwareVersion:"test"),serial:"b") == nil)
     }
     func testCalibratedRestore() throws {
-        let c = try Calibration(source: "synthetic", hardwareVersion: "test", rgbByKelvin: Array(repeating: [255,128,64], count: 3801))
+        let c = try Calibration(id: "synthetic", hardwareVersion: "test", rgbByKelvin: Array(repeating: [255,128,64], count: 3801))
         let fake = FakeTransport()
         let first = Lightstrip(transport: fake, calibration: c)
         try first.apply(Profile(temperature: 4000, brightness: 30))
@@ -225,7 +254,9 @@ struct Checks {
             ("Calibrated frame scaling", tests.testCalibratedFrameScaling),
             ("Calibration bounds and validation", tests.testCalibrationValidationAndBounds),
             ("Calibration device matching", tests.testCalibrationStoreMatchesDevice),
-            ("Calibrated off/on restoration", tests.testCalibratedRestore)
+            ("Calibrated off/on restoration", tests.testCalibratedRestore),
+            ("Bundled exact hardware matching", tests.testBundledHardwareProfile),
+            ("Legacy calibration compatibility", tests.testLegacyCalibrationCompatibility)
         ]
         for (name, test) in cases {
             let before = failures

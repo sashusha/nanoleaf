@@ -27,6 +27,18 @@ public final class HIDTransport: Transport {
         (IOHIDDeviceGetProperty(device, kIOHIDSerialNumberKey as CFString) as? String) ?? "37FA-8202"
     }
 
+    public func hardwareIdentity() throws -> HardwareIdentity {
+        let modelBytes = try request(0x0C, payload: [], valueCount: 6)
+        let revision = try request(0x0B, payload: [], valueCount: 2)
+        guard let model = String(bytes: modelBytes, encoding: .ascii),
+              revision.count == 2, revision.allSatisfy({ (48...57).contains($0) }) else {
+            throw CLIError("Device returned an unrecognized model or hardware revision.")
+        }
+        let firmwareBytes = try? request(0x0A, payload: [], valueCount: 1)
+        let firmware = firmwareBytes?.first.map { "\($0 >> 4).\($0 & 15).0" }
+        return HardwareIdentity(model: model, hardwareVersion: "\(revision[0] - 48).\(revision[1] - 48).0", firmwareVersion: firmware)
+    }
+
     public init() throws {
         let manager = IOHIDManagerCreate(kCFAllocatorDefault, 0)
         IOHIDManagerSetDeviceMatching(manager, [kIOHIDVendorIDKey: 0x37FA, kIOHIDProductIDKey: 0x8202] as CFDictionary)

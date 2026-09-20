@@ -1,64 +1,102 @@
-# Local color-temperature calibration
+# Hardware color-temperature calibration
 
-## Purpose
+## Included profile and selection
 
-The generic Kelvin-to-RGB approximation describes an idealized RGB white.
-Nanoleaf Desktop uses hardware-specific calibration, so the same nominal Kelvin
-can look different. The CLI can use a local calibration snapshot to reproduce
-that device-specific mapping without loading Desktop at runtime.
+The repository includes [NL82K2 hardware 1.1.0](calibrations/nl82k2-hw-1.1.0.json).
+It was physically checked on one lightstrip with firmware 1.5.0. Other units of
+the same revision have not yet been independently tested.
 
-Normal commands do not import calibration automatically. When no matching local
-calibration exists, they retain the generic approximation. `nanoleaf status`
-reports which conversion is active; light-changing command output identifies
-local calibration when used.
+The CLI reads the connected model and hardware revision and selects an **exact**
+model, USB vendor/product ID, and hardware revision match. It does not assume that
+a calibration for hardware 1.1.0 works on hardware 1.0.0. Firmware versions are
+listed as **tested**, not used as a hard compatibility requirement.
 
-## Storage and format
+Example command output:
 
-File: `~/Library/Application Support/nanoleaf/calibration.json`.
+```text
+On: 4000 K, 30%
+Calibration: NL82K2 hardware 1.1.0 [nl82k2-hw-1.1.0]
+Firmware: 1.5.0 (tested)
+```
 
-The top-level JSON object maps device identifiers (the USB serial number when
-available) to objects with these fields:
+With no exact match, the command reports the connected model/revision and uses
+the generic RGB approximation. If reading the revision fails, it reports that
+failure and uses the generic approximation. An unreadable firmware version does
+not prevent a hardware match; a readable but unlisted firmware version is
+explicitly reported as not listed as tested.
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `source` | Nonempty string | Human-readable source/version of the calibration. |
-| `hardwareVersion` | Nonempty string | Hardware revision used when generating it. Informational metadata, not a live hardware check. |
-| `rgbByKelvin` | Array of 3,801 RGB triples | One triple for each integer Kelvin, from 2700 through 6500 inclusive. Channel values are integers 0–255 in **RGB** order, before brightness scaling. |
+## File format
 
-Device identity selects the entry. Use only samples appropriate for that
-specific hardware. The CLI validates the selected entry before changing the
-light. A malformed file or invalid selected entry causes an error rather than
-silently reverting to generic color. A missing file or absent device entry uses
-the generic approximation.
+Each file in `calibrations/` is one profile with:
 
-Data is held outside the Git repository. Profile defaults (`config.json`) and
-last command state (`state.json`) remain separate. They are not changed by
-creating a calibration file. Replacing or removing calibration changes the
-RGB used the next time a command applies the remembered temperature.
+| Field | Meaning |
+| --- | --- |
+| `schemaVersion` | `1`. Unsupported versions are rejected. |
+| `id` | Stable profile ID, such as `nl82k2-hw-1.1.0`. |
+| `device.model` | Exact device model, currently `NL82K2`. |
+| `device.vendorId` / `device.productId` | USB IDs as hex strings: `0x37FA` / `0x8202`. |
+| `device.hardwareVersion` | Exact hardware revision, such as `1.1.0`. |
+| `testedFirmwareVersions` | Firmware versions physically tested with the profile. |
+| `temperatureRange` | `min: 2700`, `max: 6500`, `step: 1`. |
+| `rgbByKelvin` | 3,801 RGB triples, one per integer Kelvin from 2700 through 6500. Each channel is an integer 0–255, before brightness scaling. |
 
-## Rendering
+Profiles contain no serial number or source field. They can be shared between
+units with the same hardware revision. The command output identifies the
+calibration revision and tested firmware, with no source line.
 
-For each calibrated RGB channel `c` and requested brightness `b`:
+## Standalone builds
+
+Profiles are embedded in the executable, so copying only the built `nanoleaf`
+binary is sufficient. No resource bundle, downloaded data, or Nanoleaf Desktop
+installation is needed at runtime.
+
+After editing or adding a canonical JSON profile, regenerate the embedded copy:
+
+```sh
+python3 Scripts/generate-calibrations.py
+swift run --build-system native NanoleafChecks
+swift build --build-system native -c release --product nanoleaf
+```
+
+Commit the JSON and `Sources/NanoleafCore/BundledCalibrations.generated.swift`
+together. Generation is deterministic. Do not edit the generated file directly.
+
+## Optional local overrides
+
+`~/Library/Application Support/nanoleaf/calibration.json` may hold one profile
+object or an array of profile objects in the same format. An exact matching local
+profile takes precedence over the embedded profile. If none matches, the CLI
+tries embedded profiles; if neither matches, it uses the generic approximation.
+Multiple exact matches within a set are rejected rather than selected arbitrarily.
+Malformed files/profiles are reported rather than silently ignored.
+
+The previous serial-keyed local format is still readable for compatibility:
+it requires the same serial **and** an exact hardware revision match. Its old
+source field is ignored. New files should use the shareable schema above.
+
+Profiles do not change `config.json` defaults or `state.json` restore settings.
+Changing a calibration changes the rendered RGB the next time a command applies
+the remembered temperature. `status` identifies the current matching profile,
+not the profile necessarily used when the saved setting was last rendered.
+
+## Rendering and limits
+
+For each calibrated RGB channel `c` and brightness `b`:
 
 1. `scaled = round(c * b / 100)`
 2. `encoded = round(15 + 240 * scaled / 255)`
-3. Send channels in **GRB** order, repeated for every zone.
+3. Send channels in **GRB** order for every zone.
 
-Zero brightness still produces `[15,15,15]`, the black frame. `on`, `off`,
-`toggle`, `brightness`, `temp`, `day`, and `evening` all use the same conversion.
+Zero brightness still produces `[15,15,15]`, the black frame. All light-changing
+commands share this conversion. Without calibration, the original generic
+approximation and its single-stage rounding are retained.
 
-## Provenance and limitations
+The profile's numerical values were sampled from the installed Desktop 2.5.0
+calibration implementation for this hardware during diagnosis. This repository
+does not include Nanoleaf application code or libraries. Removing the source
+field from the profile does not change the data's origin; the project's MIT
+license does not itself establish rights in third-party material.
 
-During local diagnosis, the installed official Desktop 2.5.0 calibration library
-was queried once for a hardware 1.1.0 device (Desktop calibration type 2). Its
-numeric output for every integer Kelvin from 2700 to 6500 was saved only in the
-user's local calibration file. No library, table, or device identifier from that
-snapshot is distributed with the project. The source tests use synthetic data.
-
-The setup-time library access was a diagnostic step, not a runtime dependency or
-an automatic import feature. Users supplying other calibration files are
-responsible for their source and suitability. A firmware/hardware or Desktop
-calibration change may require regenerating the local snapshot.
-
-Matching Desktop's RGB output is not a colorimeter measurement. Reported Kelvin
-remains a requested setting, not proof of the emitted light's physical CCT.
+Matching Desktop's output is not a colorimeter measurement. Kelvin remains a
+requested setting, not proof of the emitted light's physical CCT. Hardware,
+firmware, or calibration changes may require an updated profile.
