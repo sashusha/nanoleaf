@@ -4,6 +4,13 @@ Native macOS Swift CLI for Nanoleaf PC Screen Mirror Lightstrip NL82K2 (USB 37FA
 
 Independent project, not affiliated with or endorsed by Nanoleaf. Licensed under [MIT](LICENSE), with the retained attribution in [third-party notices](THIRD_PARTY_NOTICES.md).
 
+## Development and verification
+
+This project was entirely vibe-coded with OpenAI Codex. The only human
+verification was testing the actual CLI during regular, everyday use. The code,
+automated tests, and documentation were AI-generated; passing automated checks
+does not constitute independent human review. See [verification details](VERIFICATION.md).
+
 ## Usage
 
 ```sh

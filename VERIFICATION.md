@@ -1,5 +1,10 @@
 # Verification
 
+This project was entirely vibe-coded with OpenAI Codex, including the code,
+automated tests, and documentation. The only human verification was testing the
+actual CLI during regular, everyday use. The automated checks and technical
+inspections below were performed by Codex, not independently reviewed by a human.
+
 ## Automated checks
 
 All 17 test groups pass, and the release executable builds successfully.
@@ -16,7 +21,7 @@ Embedded profile generation is deterministic. The calibrated Swift output was
 compared with the Desktop calibration and brightness pipeline for all 7,602
 frames spanning 2700–6500 K at 10% and 30% brightness, with matching results.
 
-## Device verification
+## Device checks and everyday usage
 
 Tested hardware: **NL82K2, revision 1.1.0, firmware 1.5.0**.
 
@@ -24,10 +29,10 @@ The installed CLI selects `nl82k2-hw-1.1.0` from the executable without a local
 calibration override. The profile contains the same 3,801 RGB samples used in
 the physical tests.
 
-Visual testing confirmed a match to Desktop's white near 4000 K at 30%.
+Human observations during everyday CLI use indicated a match to Desktop's white near 4000 K at 30%.
 The installed CLI sequence **4000 K/30% → 10% → off → on at 10% → 30%**
-confirmed visible dimming, complete darkness, and restoration of white and
-brightness. Profile defaults remained unchanged.
+produced visible dimming, complete darkness, and restoration of white and
+brightness as observed by the user. Codex checked that profile defaults remained unchanged.
 
 Binary dependency inspection showed only system libraries. Nanoleaf Desktop
 and its libraries are not required at runtime.
