@@ -120,6 +120,7 @@ enum ServiceControl {
 
 final class BackgroundService {
     private let brightnessKeys = BrightnessKeys()
+    private let brightnessOverlay = BrightnessOverlay()
     private var transport: HIDTransport?
     private var timer: Timer?
     private var retry: Timer?
@@ -263,10 +264,24 @@ final class BackgroundService {
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [self] _ in asleep = true; disconnect() })
         observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [self] _ in asleep = false; reconcile() })
-        brightnessKeys.onStep = { [weak self] delta in
+        brightnessKeys.onStep = { [weak self] delta, temperature in
             guard let self else { return }
-            let reply = self.handle(["brightness", delta > 0 ? "up" : "down"])
-            if let error = reply.error { self.log(CLIError(error)) }
+            let reply = self.handle([temperature ? "temp" : "brightness", delta > 0 ? "up" : "down"])
+            if let error = reply.error {
+                self.log(CLIError(error))
+                self.brightnessOverlay.show(message: self.transport == nil ? "Disconnected" : "Couldn’t adjust")
+            } else if let usb = self.transport {
+                do {
+                    let state = try StateStore(url: ServiceIPC.directory.appendingPathComponent("state.json")).load(device: usb.identifier)
+                    if let state {
+                        if temperature { self.brightnessOverlay.show(temperature: state.temperature) }
+                        else { self.brightnessOverlay.show(brightness: state.isOn ? state.brightness : 0) }
+                    }
+                } catch {
+                    self.log(error)
+                    self.brightnessOverlay.show(message: "State unavailable")
+                }
+            }
         }
         brightnessKeys.start()
         reconcile()

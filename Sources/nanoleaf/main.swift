@@ -10,6 +10,7 @@ Commands:
   off                    Display black; keep remembered settings for on
   toggle                 Switch the saved CLI on/off state; requires prior state
   brightness <0-100>     Set integer brightness; positive turns on, zero blanks
+  temp up|down           Cooler/warmer by 100 K; preserves power and brightness
   brightness up|down     Adjust by 5 percentage points, clamped to 0–100
   temp <2700-6500>       Set integer Kelvin; turn on at remembered brightness
   day [options]          Apply saved day defaults (initially 4800 K, 30%)
@@ -51,7 +52,9 @@ day/evening profiles, starting with day when no profile has been selected.
 USB reconnection turns on at remembered color/brightness, even after offline off.
 Shift + Brightness Up/Down adjusts by 5 percentage points with Accessibility
 permission. Run service status after granting permission to activate shortcuts.
-Brightness up from off starts at 5%; down from off does nothing.
+F18/F19 adjusts temperature warmer/cooler by 100 K.
+Keyboard adjustments show a brief Nanoleaf overlay centered on the display
+containing the pointer. Brightness up from off starts at 5%; down from off does nothing.
 Disable the service before using another lighting controller.
 
 Examples:
@@ -136,6 +139,7 @@ func execute(_ args: [String], transport supplied: HIDTransport? = nil, emit: (S
         try device.power(!device.state.isOn)
     case .brightness(let percent): try device.setBrightness(percent)
     case .brightnessStep(let delta): try device.stepBrightness(delta)
+    case .temperatureStep(let delta): try device.stepTemperature(delta)
     case .temperature(let kelvin): try device.temperature(kelvin)
     case .profile(let name, _, _, _): try device.apply(selected!, name: name)
     case .help, .config, .status: return

@@ -123,17 +123,27 @@ replacing the executable. Runtime files `service.sock`, `.service-lock`, and
 `service.log` are under the configuration directory. The log records errors, not
 routine keepalives. Disabling removes the login configuration and preserves settings.
 
-## Keyboard brightness shortcuts
+## Keyboard brightness and temperature shortcuts
 
 With the service running, **Shift + display Brightness Up/Down** changes the strip
 by 5 percentage points, clamped to 0–100. Allow the installed `nanoleaf` executable
 in System Settings → Privacy & Security → Accessibility, then run
 `nanoleaf service status` to activate the listener and check its status.
-No Keychron remapping or additional helper app is required.
+Brightness shortcuts need no Keychron remapping or additional helper app.
 
-Only Shift plus a display-brightness media key is intercepted; plain brightness
-keys and combinations with Control, Option, Command, or Fn pass through.
+For display-brightness keys, only the Shift combination is intercepted; plain
+presses and combinations with Control, Option, Command, or Fn pass through.
 Captured presses are consumed so they do not also adjust the display.
+On macOS 26 and later, the indicator uses Apple’s clear Liquid Glass material;
+older versions use a rounded translucent HUD material.
+
+After a successful keyboard adjustment, a translucent Nanoleaf indicator shows
+the adjusted brightness percentage or Kelvin value at the center of the display containing
+the pointer. It fades after 2.2 seconds without another adjustment and does not
+take focus or capture clicks. A disconnected strip shows “Disconnected”; other
+failed adjustments show an error instead of a success percentage. Ordinary CLI
+commands do not show this indicator.
+
 Holding a key repeats the adjustment. The function row must emit brightness
 keys rather than F1/F2. The shortcuts apply across keyboards.
 
@@ -141,6 +151,15 @@ keys rather than F1/F2. The shortcuts apply across keyboards.
 without needing keyboard permission. Up from off turns on at 5%; down from off
 has no effect. Temperature and saved profile defaults are preserved.
 Without Accessibility permission, USB service and CLI commands still work.
+
+F18/F19 (without Shift, Control, Option, or Command) adjust
+temperature warmer/cooler in 100 K steps, bounded to 2700–6500 K. They preserve
+brightness and on/off state and show Kelvin with a warm-to-cool indicator.
+These bindings consume F18/F19 across keyboards, not F5/F6, microphone, Focus,
+or keyboard-backlight keys. On the tested V10 Ultra, use Launcher → Custom → Any
+to assign `KC_F18` and `KC_F19` to the desired physical keys. Their resulting
+macOS events were verified. Keyboard-internal Lighting mappings do not work.
+`nanoleaf temp down|up` provides the same relative adjustment from the CLI.
 
 ## USB operation
 

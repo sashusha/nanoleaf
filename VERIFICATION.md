@@ -7,7 +7,7 @@ inspections below were performed by Codex, not independently reviewed by a human
 
 ## Automated checks
 
-All 20 test groups pass, and the release executable builds successfully.
+All 22 test groups pass, and the release executable builds successfully.
 The dependency-free suite covers:
 
 - Argument parsing, ranges, and configuration preservation.
@@ -77,3 +77,29 @@ Relative-brightness checks cover parsing, limits, off behavior, temperature
 preservation, and failed-write state preservation. The user confirmed that two Shift + Brightness Up presses followed by two
 Shift + Brightness Down presses brighten the strip and restore its original
 level without changing monitor brightness, using the installed service.
+
+## Keyboard indicator
+
+The user confirmed the centered indicator works for brightness and temperature.
+It stays visible for 2.2 seconds before fading. Fullscreen and multi-display
+placement have not been independently verified.
+
+On macOS 26 and later, the indicator uses NSGlassEffectView with the clear style.
+The user did not observe the expected greater translucency; visual equivalence
+to the native display-brightness indicator is not established. Older versions
+use a rounded, masked NSVisualEffectView; that fallback has not been run on an
+older Mac.
+
+Replacing the executable may invalidate its Accessibility authorization even when
+the switch remains enabled. Remove and re-add the installed executable if needed,
+then run `nanoleaf service status` to retry keyboard-listener activation.
+
+## Keyboard temperature adjustment
+
+All 22 check groups pass, including relative temperature parsing, range limits,
+brightness/profile preservation, off-state preservation, and rejected writes.
+The remapped Keychron keys were captured as F18/F19 (macOS keycodes 79/80),
+including the system function-key flag. The user confirmed that the installed F18/F19 temperature bindings work.
+
+Both brightness and temperature indicators use the full display frame’s center,
+on the display containing the pointer. Placement is shared by both modes.

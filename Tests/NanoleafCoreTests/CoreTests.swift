@@ -2,6 +2,29 @@ import Foundation
 import NanoleafCore
 
 final class CoreTests {
+    func testTemperatureSteps() throws {
+        XCTAssertEqual(try Command.parse(["temp", "up"]), .temperatureStep(100))
+        XCTAssertEqual(try Command.parse(["temp", "down"]), .temperatureStep(-100))
+        let transport = FakeTransport()
+        let device = Lightstrip(transport: transport, state: DisplayState(temperature: 6450, brightness: 30, isOn: true, lastProfile: "day"))
+        try device.stepTemperature(100)
+        XCTAssertEqual(device.state.temperature, 6500)
+        try device.stepTemperature(100)
+        XCTAssertEqual(device.state.temperature, 6500)
+        XCTAssertEqual(device.state.brightness, 30)
+        XCTAssertEqual(device.state.lastProfile, "day")
+        try device.temperature(2750)
+        try device.stepTemperature(-100)
+        XCTAssertEqual(device.state.temperature, 2700)
+        try device.power(false)
+        try device.stepTemperature(100)
+        XCTAssertTrue(!device.state.isOn)
+        XCTAssertEqual(device.state.temperature, 2800)
+        transport.rejectRGB = true
+        XCTAssertThrowsError(try device.stepTemperature(100))
+        XCTAssertEqual(device.state.temperature, 2800)
+    }
+
     func testBrightnessSteps() throws {
         XCTAssertEqual(try Command.parse(["brightness", "up"]), .brightnessStep(5))
         XCTAssertEqual(try Command.parse(["brightness", "down"]), .brightnessStep(-5))
@@ -322,6 +345,7 @@ struct Checks {
         let cases: [(String, () throws -> Void)] = [
             ("Parsing", tests.testParsing),
             ("Relative brightness", tests.testBrightnessSteps),
+            ("Relative temperature", tests.testTemperatureSteps),
             ("Physical button events", tests.testButtonEvents),
             ("Mode profile cycling and persistence", tests.testModeProfiles),
             ("Reconnect power policy", tests.testReconnectPowerPolicy),
