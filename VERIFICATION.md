@@ -7,13 +7,14 @@ inspections below were performed by Codex, not independently reviewed by a human
 
 ## Automated checks
 
-All 22 test groups pass, and the release executable builds successfully.
+All 23 test groups pass, and the release executable builds successfully.
 The dependency-free suite covers:
 
 - Argument parsing, ranges, and configuration preservation.
 - Captured power-button events, mode-button decoding, and malformed event rejection.
 - Profile cycling, compatibility with existing state, persisted selection, and failed-frame preservation.
 - Reconnection turns on; startup preserves state; failed reconnect restores can retry.
+- Duplicate and overlapping screensaver, display-sleep, and system-sleep events.
 - TLV responses, HID packet boundaries, and reference frame fixtures.
 - Zero/low brightness, temperature changes, and off/on restoration.
 - Saved-state validation and preservation after rejected writes.
@@ -50,9 +51,8 @@ routing, invalid commands, malformed JSON, and stalled-client handling were
 checked against the running service. Login-service enable/disable and standalone
 operation after disabling were also checked; the local socket is owner-only.
 
-An idle process snapshot showed 0.0% CPU and approximately 13 MB resident memory.
-This is not a measurement of battery impact. Sleep/wake behavior is implemented
-but has not been physically verified.
+Full system sleep/wake behavior has not been physically verified.
+Battery impact has not been measured.
 
 The user also confirmed that the installed service’s mode button alternates
 between the saved evening (3500 K/30%) and day (4500 K/30%) profiles.
@@ -85,10 +85,8 @@ It stays visible for 2.2 seconds before fading. Fullscreen and multi-display
 placement have not been independently verified.
 
 On macOS 26 and later, the indicator uses NSGlassEffectView with the clear style.
-The user did not observe the expected greater translucency; visual equivalence
-to the native display-brightness indicator is not established. Older versions
-use a rounded, masked NSVisualEffectView; that fallback has not been run on an
-older Mac.
+Older versions use a rounded, masked NSVisualEffectView; that fallback has not
+been tested on an older Mac.
 
 Replacing the executable may invalidate its Accessibility authorization even when
 the switch remains enabled. Remove and re-add the installed executable if needed,
@@ -96,10 +94,18 @@ then run `nanoleaf service status` to retry keyboard-listener activation.
 
 ## Keyboard temperature adjustment
 
-All 22 check groups pass, including relative temperature parsing, range limits,
+Relative-temperature checks cover parsing, range limits,
 brightness/profile preservation, off-state preservation, and rejected writes.
 The remapped Keychron keys were captured as F18/F19 (macOS keycodes 79/80),
 including the system function-key flag. The user confirmed that the installed F18/F19 temperature bindings work.
 
 Both brightness and temperature indicators use the full display frame’s center,
 on the display containing the pointer. Placement is shared by both modes.
+
+## Idle blanking
+
+The user confirmed complete darkness when the screensaver starts or the display
+sleeps, and restoration of the previous color and brightness after dismissal or
+wake, using the installed service. Saved-state file checksums stayed unchanged
+across both tests. Automated checks cover duplicate and overlapping idle reasons,
+including display wake while the screensaver remains active.

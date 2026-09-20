@@ -2,6 +2,30 @@ import Foundation
 import NanoleafCore
 
 final class CoreTests {
+    func testIdlePolicy() {
+        var policy = IdlePolicy()
+        XCTAssertTrue(!policy.isSuppressed)
+        policy.set(.screensaver, active: true)
+        policy.set(.screensaver, active: true)
+        policy.set(.displaySleep, active: true)
+        policy.set(.screensaver, active: false)
+        XCTAssertTrue(policy.isSuppressed)
+        policy.set(.systemSleep, active: true)
+        policy.set(.displaySleep, active: false)
+        XCTAssertTrue(policy.isSuppressed)
+        policy.set(.systemSleep, active: false)
+        XCTAssertTrue(!policy.isSuppressed)
+        policy.set(.displaySleep, active: false)
+        XCTAssertTrue(!policy.isSuppressed)
+        // Wake alone must not cancel a still-running screensaver.
+        policy.set(.screensaver, active: true)
+        policy.set(.displaySleep, active: true)
+        policy.set(.displaySleep, active: false)
+        XCTAssertTrue(policy.isSuppressed)
+        policy.set(.screensaver, active: false)
+        XCTAssertTrue(!policy.isSuppressed)
+    }
+
     func testTemperatureSteps() throws {
         XCTAssertEqual(try Command.parse(["temp", "up"]), .temperatureStep(100))
         XCTAssertEqual(try Command.parse(["temp", "down"]), .temperatureStep(-100))
@@ -346,6 +370,7 @@ struct Checks {
             ("Parsing", tests.testParsing),
             ("Relative brightness", tests.testBrightnessSteps),
             ("Relative temperature", tests.testTemperatureSteps),
+            ("Overlapping idle events", tests.testIdlePolicy),
             ("Physical button events", tests.testButtonEvents),
             ("Mode profile cycling and persistence", tests.testModeProfiles),
             ("Reconnect power policy", tests.testReconnectPowerPolicy),

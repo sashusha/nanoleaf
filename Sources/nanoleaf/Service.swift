@@ -102,7 +102,7 @@ enum ServiceControl {
             try stopIfLoaded()
             try data.write(to: plist, options: .atomic)
             try launchctl(["bootstrap", domain, plist.path])
-            print("Service enabled and starts at login. Physical power restores saved CLI settings.")
+            print("Service enabled and starts at login. Run nanoleaf service status to check the device, idle blanking, and keyboard shortcuts.")
         case "disable":
             try stopIfLoaded()
             if isEnabled { try FileManager.default.removeItem(at: plist) }
@@ -124,7 +124,14 @@ final class BackgroundService {
     private var transport: HIDTransport?
     private var timer: Timer?
     private var retry: Timer?
-    private var busy = false
+    private var busy = false {
+        didSet {
+            if !busy { DispatchQueue.main.async { [weak self] in self?.updateIdleOutput() } }
+        }
+    }
+    private var idle = IdlePolicy()
+    private var outputSuppressed: Bool?
+    private var distributedObservers: [NSObjectProtocol] = []
     private var asleep = false
     private var reconnect = ReconnectPolicy()
     private var buttons: [ButtonAction] = []
@@ -141,7 +148,36 @@ final class BackgroundService {
     private func disconnect() {
         timer?.invalidate(); timer = nil
         retry?.invalidate(); retry = nil
-        transport?.onButton = nil; transport = nil; buttons.removeAll()
+        transport?.onButton = nil; transport = nil; buttons.removeAll(); outputSuppressed = nil
+    }
+    private func setIdle(_ reason: IdlePolicy.Reason, active: Bool) {
+        idle.set(reason, active: active)
+        updateIdleOutput()
+    }
+    private func blank(_ usb: HIDTransport) throws {
+        // Temporary black frame: never overwrite the persisted restore state.
+        try Lightstrip(transport: usb).power(false)
+    }
+    private func updateIdleOutput() {
+        guard !busy, !asleep, let usb = transport, let applied = outputSuppressed,
+              applied != idle.isSuppressed else { return }
+        let suppress = idle.isSuppressed
+        busy = true
+        defer { busy = false }
+        do {
+            if suppress { try blank(usb) }
+            else {
+                let state = try StateStore(url: ServiceIPC.directory.appendingPathComponent("state.json")).load(device: usb.identifier)
+                try execute([reconnect.shouldTurnOn(savedState: state) ? "on" : "off"], transport: usb, emit: { _ in })
+                reconnect.didRestore()
+            }
+            outputSuppressed = suppress
+        } catch {
+            // Reconnect/retry on the existing error schedule, not a busy retry loop.
+            log(error)
+            disconnect()
+            retry = Timer.scheduledTimer(withTimeInterval: 30, repeats: false) { [weak self] _ in self?.reconcile() }
+        }
     }
     private func reconcile() {
         guard !busy else { return }
@@ -156,9 +192,14 @@ final class BackgroundService {
             let usb = try HIDTransport()
             // Restore only after a successful state/config read through the regular command path.
             let state = try StateStore(url: ServiceIPC.directory.appendingPathComponent("state.json")).load(device: usb.identifier)
-            try execute([reconnect.shouldTurnOn(savedState: state) ? "on" : "off"], transport: usb, emit: { _ in })
-            reconnect.didRestore()
+            let suppress = idle.isSuppressed
+            if suppress { try blank(usb) }
+            else {
+                try execute([reconnect.shouldTurnOn(savedState: state) ? "on" : "off"], transport: usb, emit: { _ in })
+                reconnect.didRestore()
+            }
             transport = usb
+            outputSuppressed = suppress
             usb.onButton = { [weak self] bytes in
                 let actions = ButtonEvent.actions(bytes)
                 guard !actions.isEmpty else { return }
@@ -185,6 +226,7 @@ final class BackgroundService {
         drainButtons()
     }
     private func drainButtons() {
+        guard !idle.isSuppressed else { buttons.removeAll(); return }
         guard !busy, let usb = transport else { return }
         while !buttons.isEmpty {
             let action = buttons.removeFirst(); busy = true
@@ -205,7 +247,7 @@ final class BackgroundService {
         if args == ["__service_status"] {
             brightnessKeys.start()
             let deviceStatus = transport == nil ? "Waiting for device.\(lastError.map { " Last error: \($0)" } ?? "")" : "Connected. Keepalive: 3 seconds. Physical power and day/evening mode handling active."
-            return ServiceReply(output: deviceStatus + "\n" + brightnessKeys.status)
+            return ServiceReply(output: deviceStatus + "\n" + (idle.isSuppressed ? "Idle blanking active; saved light settings preserved." : "Screensaver/display-sleep blanking ready.") + "\n" + brightnessKeys.status)
         }
         guard !busy else { return ServiceReply(output: "", error: "Device is busy; retry the command.") }
         var lines: [String] = []
@@ -213,6 +255,9 @@ final class BackgroundService {
         defer { busy = false; DispatchQueue.main.async { self.drainButtons() } }
         do {
             let command = try Command.parse(args)
+            if idle.isSuppressed && command != .status && command != .off {
+                throw CLIError("Idle blanking is active. Dismiss the screensaver and wake the display before adjusting the light; off and status remain available.")
+            }
             guard command != .help && command != .config else { throw CLIError("Use help and config directly.") }
             guard let usb = transport else { throw CLIError("Lightstrip unavailable. Check USB connection and service status.") }
             try execute(args, transport: usb, emit: { lines.append($0) })
@@ -261,9 +306,19 @@ final class BackgroundService {
         IOHIDManagerRegisterDeviceMatchingCallback(manager, changed, context)
         IOHIDManagerRegisterDeviceRemovalCallback(manager, changed, context)
         IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        // AppKit must process application events for display sleep/wake delivery.
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        app.finishLaunching()
         let center = NSWorkspace.shared.notificationCenter
-        observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [self] _ in asleep = true; disconnect() })
-        observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [self] _ in asleep = false; reconcile() })
+        observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [self] _ in setIdle(.systemSleep, active: true); asleep = true; disconnect() })
+        observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [self] _ in asleep = false; idle.set(.systemSleep, active: false); reconcile() })
+        observers.append(center.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [self] _ in setIdle(.displaySleep, active: true) })
+        observers.append(center.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [self] _ in setIdle(.displaySleep, active: false) })
+        let distributed = DistributedNotificationCenter.default()
+        for (name, active) in [("com.apple.screensaver.didstart", true), ("com.apple.screensaver.didstop", false)] {
+            distributedObservers.append(distributed.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [self] _ in setIdle(.screensaver, active: active) })
+        }
         brightnessKeys.onStep = { [weak self] delta, temperature in
             guard let self else { return }
             let reply = self.handle([temperature ? "temp" : "brightness", delta > 0 ? "up" : "down"])
@@ -285,7 +340,6 @@ final class BackgroundService {
         }
         brightnessKeys.start()
         reconcile()
-        // HID replies may stop a nested run loop; return to waiting without periodic polling.
-        while true { CFRunLoopRun() }
+        app.run()
     }
 }

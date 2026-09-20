@@ -27,9 +27,6 @@ final class BrightnessOverlay {
     private var generation = 0
 
     private func makePanel() -> IndicatorPanel {
-        let app = NSApplication.shared
-        app.setActivationPolicy(.accessory)
-        app.finishLaunching()
         let panel = IndicatorPanel(contentRect: NSRect(x: 0, y: 0, width: 260, height: 86),
                                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false

@@ -10,9 +10,9 @@ Commands:
   off                    Display black; keep remembered settings for on
   toggle                 Switch the saved CLI on/off state; requires prior state
   brightness <0-100>     Set integer brightness; positive turns on, zero blanks
-  temp up|down           Cooler/warmer by 100 K; preserves power and brightness
   brightness up|down     Adjust by 5 percentage points, clamped to 0–100
   temp <2700-6500>       Set integer Kelvin; turn on at remembered brightness
+  temp up|down           Cooler/warmer by 100 K; preserves power and brightness
   day [options]          Apply saved day defaults (initially 4800 K, 30%)
   evening [options]      Apply saved evening defaults (initially 3500 K, 30%)
   config                 Show profile defaults and their file path; no device needed
@@ -52,9 +52,15 @@ day/evening profiles, starting with day when no profile has been selected.
 USB reconnection turns on at remembered color/brightness, even after offline off.
 Shift + Brightness Up/Down adjusts by 5 percentage points with Accessibility
 permission. Run service status after granting permission to activate shortcuts.
-F18/F19 adjusts temperature warmer/cooler by 100 K.
+F18/F19 adjust temperature warmer/cooler by 100 K, preserving on/off state.
 Keyboard adjustments show a brief Nanoleaf overlay centered on the display
 containing the pointer. Brightness up from off starts at 5%; down from off does nothing.
+Screensaver/display sleep temporarily blanks the strip without changing saved
+settings; they restore after both conditions clear. While idle, only off and
+status are accepted by the service. service status reports idle blanking.
+After replacing the executable, rerun service enable while the Mac is active.
+If shortcuts stop working, remove and re-add nanoleaf in Accessibility, then
+run service status.
 Disable the service before using another lighting controller.
 
 Examples:
@@ -125,10 +131,10 @@ func execute(_ args: [String], transport supplied: HIDTransport? = nil, emit: (S
         print("Connected LED zones: \(try device.zones())")
         printCalibration()
         if let state = savedState {
-            print("Last CLI setting: \(state.isOn ? "on" : "off"), approximately \(state.temperature) K, \(state.isOn ? state.brightness : 0)%")
+            print("Last CLI setting: \(state.isOn ? "on" : "off"), \(state.temperature) K requested, \(state.isOn ? state.brightness : 0)%")
             print("Remembered on brightness: \(state.brightness)%")
         } else { print("Last CLI setting: unknown. Run day, evening, or on to establish one.") }
-        print("This is saved command state, not a measurement of the LEDs. Other apps, buttons, or a power cycle can change them.")
+        print("Saved settings, not measured LED output. Idle blanking, other controllers, or power loss may change the visible light.")
         return
     }
     switch command {

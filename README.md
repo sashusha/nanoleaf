@@ -39,6 +39,8 @@ Initial defaults: **day 4800 K/30%**, **evening 3500 K/30%**. Brightness accepts
 | `off` | Send black, retaining those settings for the next `on`. |
 | `toggle` | Invert the saved CLI on/off state; fail if no state has been saved for this device. |
 | `brightness N` | Positive values turn on at the remembered temperature. Zero sends black and retains the previous nonzero brightness. |
+| `brightness up` / `down` | Adjust by 5 percentage points. Up from off starts at 5%; down from off does nothing. |
+| `temp up` / `down` | Adjust cooler/warmer by 100 K, preserving brightness and on/off state. |
 | `temp K` | Set the temperature and turn on at the remembered nonzero brightness. |
 | `day` / `evening` | Apply that profile's saved values, with any supplied overrides. Positive brightness turns on; zero sends black. |
 | `config` | Show effective profile defaults and their file path. Does not require the device. |
@@ -73,7 +75,7 @@ JSON files are written atomically, but applying the frame, saving restore state,
 
 ## Optional background service
 
-Enable physical power-button control of the CLI setting:
+Enable physical buttons, keyboard shortcuts, and automatic screensaver/display-sleep blanking:
 
 ```sh
 nanoleaf service enable
@@ -123,6 +125,27 @@ replacing the executable. Runtime files `service.sock`, `.service-lock`, and
 `service.log` are under the configuration directory. The log records errors, not
 routine keepalives. Disabling removes the login configuration and preserves settings.
 
+## Screensaver and display sleep
+
+The service temporarily blanks the strip when the screensaver starts or the
+displays sleep. It restores the saved on/off state, temperature, and brightness
+once both conditions clear. A strip already off stays off. Temporary blanking
+does not overwrite saved state or profile defaults.
+
+Keepalives continue during screensaver/display sleep while the Mac is awake,
+so the controller stays in online mode. Before system sleep the service attempts
+to blank the strip and releases USB; it reconnects on wake. Once the Mac is asleep
+or USB is disconnected, firmware controls the strip and continued darkness cannot
+be guaranteed. A USB reconnect while idle stays blank until activity resumes;
+the normal reconnect turn-on policy then applies.
+
+While temporarily blanked, physical controller buttons are ignored and light-changing
+CLI commands are rejected except `off`, which also cancels the saved on state.
+`service status` reports idle blanking; `status` continues to report saved settings.
+These event-based rules apply while the service is running. Screensaver detection
+uses macOS distributed notifications, verified on the development Mac but not a
+publicly documented Apple contract. Restart the service while the Mac is active.
+
 ## Keyboard brightness and temperature shortcuts
 
 With the service running, **Shift + display Brightness Up/Down** changes the strip
@@ -151,14 +174,15 @@ keys rather than F1/F2. The shortcuts apply across keyboards.
 without needing keyboard permission. Up from off turns on at 5%; down from off
 has no effect. Temperature and saved profile defaults are preserved.
 Without Accessibility permission, USB service and CLI commands still work.
+After replacing the executable, macOS may require you to remove and re-add it
+in Accessibility, even if its existing switch is enabled. Then run
+`nanoleaf service status` to activate shortcuts.
 
 F18/F19 (without Shift, Control, Option, or Command) adjust
 temperature warmer/cooler in 100 K steps, bounded to 2700–6500 K. They preserve
 brightness and on/off state and show Kelvin with a warm-to-cool indicator.
-These bindings consume F18/F19 across keyboards, not F5/F6, microphone, Focus,
-or keyboard-backlight keys. On the tested V10 Ultra, use Launcher → Custom → Any
-to assign `KC_F18` and `KC_F19` to the desired physical keys. Their resulting
-macOS events were verified. Keyboard-internal Lighting mappings do not work.
+These bindings consume F18/F19 across keyboards. On the tested Keychron V10 Ultra,
+use Launcher → Custom → Any to assign `KC_F18` and `KC_F19` to the desired keys.
 `nanoleaf temp down|up` provides the same relative adjustment from the CLI.
 
 ## USB operation
@@ -186,6 +210,15 @@ swift build --build-system native -c release --product nanoleaf
 mkdir -p "$HOME/.local/bin"
 install -m 755 .build/release/nanoleaf "$HOME/.local/bin/nanoleaf"
 ```
+
+For background control, run `nanoleaf service enable` after installation or
+replacement, while the Mac is active. This registers the installed path and
+restarts the service. Keyboard shortcuts also require Accessibility permission.
+
+To use another Mac, build there or copy an executable compatible with its macOS
+version and processor architecture, then follow the same installation steps.
+Calibration is embedded; profile defaults and remembered settings are local to
+each Mac.
 
 `~/.local/bin` must be on your PATH. The native build-system flag matches the locally verified build; this Swift toolchain emits a deprecation warning for it.
 

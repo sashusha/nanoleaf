@@ -62,7 +62,7 @@ public enum Command: Equatable {
             if name == "temp", rest == ["down"] { return .temperatureStep(-100) }
             if name == "brightness", rest == ["up"] { return .brightnessStep(5) }
             if name == "brightness", rest == ["down"] { return .brightnessStep(-5) }
-            guard rest.count == 1, let n = Int(rest[0]) else { throw CLIError("\(name) requires one integer.") }
+            guard rest.count == 1, let n = Int(rest[0]) else { throw CLIError("\(name) requires an integer or up/down.") }
             if name == "brightness" {
                 try Profile(temperature: 4800, brightness: n).validate(); return .brightness(n)
             }
