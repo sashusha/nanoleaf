@@ -47,6 +47,7 @@ Optional service: starts at login, keeps USB online every 3 seconds, and handles
 physical power presses using saved CLI settings. Normal commands route through
 it. Stops USB traffic when disconnected or asleep. Mode presses alternate saved
 day/evening profiles, starting with day when no profile has been selected.
+USB reconnection turns on at remembered color/brightness, even after offline off.
 Disable the service before using another lighting controller.
 
 Examples:

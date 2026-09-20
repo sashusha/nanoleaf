@@ -99,8 +99,13 @@ One-time CLI overrides do not change the saved defaults used by the button.
 
 Entering online mode stops built-in color cycling; use `service disable` to return to the strip's standalone controls.
 
-At startup and after reconnection, the service applies saved CLI state. Without
-saved state, it starts off with 4800 K/30% remembered for the next power press.
+After detecting a USB disconnect and reconnect, the service turns the strip on
+at the remembered CLI temperature and nonzero brightness, even if it was turned
+off using its physical button while the Mac was disconnected. The last selected
+day/evening profile is preserved. With no saved state, reconnect uses 4800 K/30%.
+
+Service startup and recovery from a USB error preserve saved on/off state.
+Without saved state, service startup leaves the strip off with 4800 K/30% remembered.
 It uses a timer and USB callbacks, stops keepalives when disconnected or asleep,
 and reconnects after wake. It does not prevent Mac sleep. Physical controls
 revert to device behavior when the service cannot keep the strip online.

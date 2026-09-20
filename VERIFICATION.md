@@ -7,12 +7,13 @@ inspections below were performed by Codex, not independently reviewed by a human
 
 ## Automated checks
 
-All 19 test groups pass, and the release executable builds successfully.
+All 20 test groups pass, and the release executable builds successfully.
 The dependency-free suite covers:
 
 - Argument parsing, ranges, and configuration preservation.
 - Captured power-button events, mode-button decoding, and malformed event rejection.
 - Profile cycling, compatibility with existing state, persisted selection, and failed-frame preservation.
+- Reconnection turns on; startup preserves state; failed reconnect restores can retry.
 - TLV responses, HID packet boundaries, and reference frame fixtures.
 - Zero/low brightness, temperature changes, and off/on restoration.
 - Saved-state validation and preservation after rejected writes.
@@ -55,6 +56,9 @@ but has not been physically verified.
 
 The user also confirmed that the installed service’s mode button alternates
 between the saved evening (3500 K/30%) and day (4500 K/30%) profiles.
+
+The user confirmed laptop disconnect → physical power off → laptop reconnect
+turns the strip on at the remembered CLI setting.
 
 ## Scope and limitations
 

@@ -41,6 +41,24 @@ final class CoreTests {
         XCTAssertEqual(device.state.brightness, 30)
     }
 
+    func testReconnectPowerPolicy() {
+        var policy = ReconnectPolicy()
+        let off = DisplayState(temperature: 5250, brightness: 30, isOn: false, lastProfile: "day")
+        policy.observeDevicePresence(true)
+        XCTAssertTrue(!policy.shouldTurnOn(savedState: off))
+        XCTAssertTrue(!policy.shouldTurnOn(savedState: nil))
+        policy.observeDevicePresence(false)
+        policy.observeDevicePresence(true)
+        XCTAssertTrue(policy.shouldTurnOn(savedState: off))
+        XCTAssertTrue(policy.shouldTurnOn(savedState: nil))
+        // A failed restore does not consume the reconnect request.
+        policy.observeDevicePresence(true)
+        XCTAssertTrue(policy.shouldTurnOn(savedState: off))
+        policy.didRestore()
+        XCTAssertTrue(!policy.shouldTurnOn(savedState: off))
+        XCTAssertTrue(policy.shouldTurnOn(savedState: DisplayState(isOn: true)))
+    }
+
     func testParsing() throws {
         XCTAssertEqual(try Command.parse(["day"]), .profile("day", temperature: nil, brightness: nil, save: false))
         XCTAssertEqual(try Command.parse(["evening", "--temp", "3300", "--brightness", "0", "--save"]), .profile("evening", temperature: 3300, brightness: 0, save: true))
@@ -282,6 +300,7 @@ struct Checks {
             ("Parsing", tests.testParsing),
             ("Physical button events", tests.testButtonEvents),
             ("Mode profile cycling and persistence", tests.testModeProfiles),
+            ("Reconnect power policy", tests.testReconnectPowerPolicy),
             ("Configuration", tests.testConfigurationRoundTripAndCorruption),
             ("Packet boundaries", tests.testPacketBoundaries),
             ("Response validation", tests.testResponseValidation),

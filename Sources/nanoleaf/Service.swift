@@ -124,6 +124,7 @@ final class BackgroundService {
     private var retry: Timer?
     private var busy = false
     private var asleep = false
+    private var reconnect = ReconnectPolicy()
     private var buttons: [ButtonAction] = []
     private var lastError: String?
     private var manager: IOHIDManager!
@@ -144,14 +145,17 @@ final class BackgroundService {
         guard !busy else { return }
         disconnect()
         guard !asleep else { return }
-        guard let devices = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice>, !devices.isEmpty else { return }
+        let devices = (IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice>) ?? []
+        reconnect.observeDevicePresence(!devices.isEmpty)
+        guard !devices.isEmpty else { return }
         busy = true
         defer { busy = false }
         do {
             let usb = try HIDTransport()
             // Restore only after a successful state/config read through the regular command path.
             let state = try StateStore(url: ServiceIPC.directory.appendingPathComponent("state.json")).load(device: usb.identifier)
-            try execute([state?.isOn == true ? "on" : "off"], transport: usb, emit: { _ in })
+            try execute([reconnect.shouldTurnOn(savedState: state) ? "on" : "off"], transport: usb, emit: { _ in })
+            reconnect.didRestore()
             transport = usb
             usb.onButton = { [weak self] bytes in
                 let actions = ButtonEvent.actions(bytes)
