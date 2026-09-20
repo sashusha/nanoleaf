@@ -33,11 +33,13 @@ Remembered settings:
 Files under ~/Library/Application Support/nanoleaf/:
   config.json            Saved day/evening defaults
   state.json             Last CLI settings per device
+  calibration.json       Optional local hardware color calibration per device
 
 status and toggle use saved CLI state, not measured LED state. Buttons, other
 controllers, and power loss can make it stale. All commands except help and
 config require a connected device. Quit other lighting controllers before use.
-Temperature is approximate RGB white, not calibrated color temperature.
+Temperature uses local calibration when present, otherwise approximate RGB white.
+Matching Desktop does not establish instrument-measured color temperature.
 No Nanoleaf Desktop, pairing, network connection, or daemon is required.
 
 Examples:
@@ -80,9 +82,12 @@ func run() throws {
     let transport = try HIDTransport()
     let stateStore = StateStore(url: store.url.deletingLastPathComponent().appendingPathComponent("state.json"))
     let savedState = try stateStore.load(device: transport.identifier)
-    let device = Lightstrip(transport: transport, state: savedState ?? DisplayState())
+    let calibrationStore = CalibrationStore(url: store.url.deletingLastPathComponent().appendingPathComponent("calibration.json"))
+    let calibration = try calibrationStore.load(device: transport.identifier)
+    let device = Lightstrip(transport: transport, state: savedState ?? DisplayState(), calibration: calibration)
     if command == .status {
         print("Connected LED zones: \(try device.zones())")
+        print(calibration.map { "Color conversion: local calibration (\($0.source), hardware \($0.hardwareVersion))" } ?? "Color conversion: generic RGB approximation")
         if let state = savedState {
             print("Last CLI setting: \(state.isOn ? "on" : "off"), approximately \(state.temperature) K, \(state.isOn ? state.brightness : 0)%")
             print("Remembered on brightness: \(state.brightness)%")
@@ -109,7 +114,8 @@ func run() throws {
         catch { throw CLIError("Frame sent, but defaults could not be saved: \(error)") }
     }
     let state = device.state
-    print(state.isOn ? "On: approximately \(state.temperature) K, \(state.brightness)%" : "Off")
+    let colorLabel = calibration == nil ? "approximately \(state.temperature) K" : "\(state.temperature) K (local calibration)"
+    print(state.isOn ? "On: \(colorLabel), \(state.brightness)%" : "Off")
     if case .profile(_, _, _, true) = command { print("Profile defaults saved.") }
 
 }

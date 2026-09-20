@@ -106,6 +106,58 @@ final class CoreTests {
         XCTAssertEqual(device.state.brightness, 10)
         XCTAssertEqual(Array(fake.rgb.prefix(3)), [36, 39, 34])
     }
+    func testCalibratedFrameScaling() throws {
+        let calibration = try Calibration(source: "synthetic test", hardwareVersion: "test",
+            rgbByKelvin: Array(repeating: [255,128,64], count: 3801))
+        XCTAssertEqual(try Frame.zone(kelvin: 4000, brightness: 30, calibration: calibration), [51,87,33])
+        XCTAssertEqual(try Frame.zone(kelvin: 4000, brightness: 10, calibration: calibration), [27,39,21])
+        XCTAssertEqual(try Frame.zone(kelvin: 4000, brightness: 0, calibration: calibration), [15,15,15])
+        XCTAssertEqual(try Frame.zone(kelvin: 4000, brightness: 100, calibration: calibration), [135,255,75])
+    }
+    func testCalibrationValidationAndBounds() throws {
+        var samples = Array(repeating: [255,128,64], count: 3801)
+        samples[0] = [1,2,3]; samples[3800] = [4,5,6]
+        let c = try Calibration(source: "test", hardwareVersion: "test", rgbByKelvin: samples)
+        XCTAssertEqual(try c.rgb(kelvin: 2700), [1,2,3])
+        XCTAssertEqual(try c.rgb(kelvin: 6500), [4,5,6])
+        XCTAssertThrowsError(try c.rgb(kelvin: 2699))
+        XCTAssertThrowsError(try c.rgb(kelvin: 6501))
+        XCTAssertThrowsError(try Calibration(source: "test", hardwareVersion: "test", rgbByKelvin: []))
+        samples[100] = [256,0,0]
+        XCTAssertThrowsError(try Calibration(source: "test", hardwareVersion: "test", rgbByKelvin: samples))
+        samples[100] = [0,0]
+        XCTAssertThrowsError(try Calibration(source: "test", hardwareVersion: "test", rgbByKelvin: samples))
+    }
+    func testCalibrationStoreMatchesDevice() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = CalibrationStore(url: dir.appendingPathComponent("calibration.json"))
+        XCTAssertTrue(try store.load(device: "a") == nil)
+        let c = try Calibration(source: "synthetic", hardwareVersion: "test", rgbByKelvin: Array(repeating: [255,128,64], count: 3801))
+        try JSONEncoder().encode(["a":c]).write(to: store.url)
+        XCTAssertEqual(try store.load(device: "a")?.rgb(kelvin: 4000), [255,128,64])
+        XCTAssertTrue(try store.load(device: "b") == nil)
+        try Data("{invalid".utf8).write(to: store.url)
+        XCTAssertThrowsError(try store.load(device: "a"))
+        try Data("{\"a\":{\"source\":\"test\",\"hardwareVersion\":\"test\",\"rgbByKelvin\":[]}}".utf8).write(to: store.url)
+        XCTAssertThrowsError(try store.load(device: "a"))
+    }
+    func testCalibratedRestore() throws {
+        let c = try Calibration(source: "synthetic", hardwareVersion: "test", rgbByKelvin: Array(repeating: [255,128,64], count: 3801))
+        let fake = FakeTransport()
+        let first = Lightstrip(transport: fake, calibration: c)
+        try first.apply(Profile(temperature: 4000, brightness: 30))
+        let original = fake.rgb
+        try first.power(false)
+        XCTAssertEqual(fake.rgb, Array(repeating: 15, count: 225))
+        let second = Lightstrip(transport: fake, state: first.state, calibration: c)
+        try second.power(true)
+        XCTAssertEqual(fake.rgb, original)
+        try second.setBrightness(10)
+        XCTAssertEqual(Array(fake.rgb.prefix(3)), [27,39,21])
+        XCTAssertEqual(second.state.temperature, 4000)
+    }
     func testCorruptState() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -169,7 +221,11 @@ struct Checks {
             ("Zero and low brightness", tests.testZeroAndLowBrightness),
             ("Rejected frame preserves state", tests.testRejectedFramePreservesRestoreState),
             ("Temperature preserves brightness", tests.testTemperaturePreservesExistingBrightness),
-            ("Corrupt saved state", tests.testCorruptState)
+            ("Corrupt saved state", tests.testCorruptState),
+            ("Calibrated frame scaling", tests.testCalibratedFrameScaling),
+            ("Calibration bounds and validation", tests.testCalibrationValidationAndBounds),
+            ("Calibration device matching", tests.testCalibrationStoreMatchesDevice),
+            ("Calibrated off/on restoration", tests.testCalibratedRestore)
         ]
         for (name, test) in cases {
             let before = failures

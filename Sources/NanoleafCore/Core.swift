@@ -119,10 +119,18 @@ public protocol Transport: AnyObject {
 // USB RGB streaming uses GRB order and a channel floor of 15 in the
 // vendor's desktop implementation. Brightness belongs in the frame, not 0x09.
 public enum Frame {
-    public static func zone(kelvin: Int, brightness: Int) throws -> [UInt8] {
+    public static func zone(kelvin: Int, brightness: Int, calibration: Calibration? = nil) throws -> [UInt8] {
         try Profile(temperature: kelvin, brightness: brightness).validate()
-        let rgb = Wire.rgb(kelvin: kelvin).map {
-            UInt8((15 + 240 * Double($0) / 255 * Double(brightness) / 100).rounded())
+        let base = try calibration?.rgb(kelvin: kelvin) ?? Wire.rgb(kelvin: kelvin)
+        let rgb = base.map { channel -> UInt8 in
+            if calibration != nil {
+                // Match Desktop's two stages: round brightness-scaled RGB to
+                // bytes first, then map those bytes into the device's 15...255 range.
+                let scaled = (Double(channel) * Double(brightness) / 100).rounded()
+                return UInt8((15 + 240 * scaled / 255).rounded())
+            }
+            // Preserve existing output for devices without local calibration.
+            return UInt8((15 + 240 * Double(channel) / 255 * Double(brightness) / 100).rounded())
         }
         return [rgb[1], rgb[0], rgb[2]]
     }
@@ -164,9 +172,10 @@ public struct StateStore {
 
 public final class Lightstrip {
     private let transport: Transport
+    private let calibration: Calibration?
     public private(set) var state: DisplayState
-    public init(transport: Transport, state: DisplayState = DisplayState()) {
-        self.transport = transport; self.state = state
+    public init(transport: Transport, state: DisplayState = DisplayState(), calibration: Calibration? = nil) {
+        self.transport = transport; self.state = state; self.calibration = calibration
     }
     public func zones() throws -> Int {
         let value = try transport.request(0x03, payload: [], valueCount: 1)
@@ -175,7 +184,7 @@ public final class Lightstrip {
     }
     private func display(_ next: DisplayState) throws {
         try next.validate()
-        let zone = try Frame.zone(kelvin: next.temperature, brightness: next.isOn ? next.brightness : 0)
+        let zone = try Frame.zone(kelvin: next.temperature, brightness: next.isOn ? next.brightness : 0, calibration: calibration)
         let count = try zones()
         _ = try transport.request(0x02, payload: Array(repeating: zone, count: count).flatMap { $0 }, valueCount: 0)
         // An acknowledgement establishes delivery, not a physical measurement.

@@ -24,7 +24,7 @@ nanoleaf day --temp 5200 --brightness 40
 nanoleaf evening --temp 3300 --brightness 20 --save
 ```
 
-Initial defaults: **day 4800 K/30%**, **evening 3500 K/30%**. Brightness accepts integers from 0 to 100; temperature accepts integers from 2700 to 6500 K. Kelvin is an approximate RGB white, not a calibrated color temperature.
+Initial defaults: **day 4800 K/30%**, **evening 3500 K/30%**. Brightness accepts integers from 0 to 100; temperature accepts integers from 2700 to 6500 K. Kelvin uses a local per-device calibration when present; otherwise it uses a generic RGB approximation. Neither mode establishes instrument-measured color temperature.
 
 | Command | Behavior |
 | --- | --- |
@@ -56,11 +56,12 @@ Files are under `~/Library/Application Support/nanoleaf/`:
 
 - `config.json`: saved profile defaults. If absent, built-in defaults apply; the file is written by `--save`.
 - `state.json`: last CLI settings, keyed by device serial when available. Written after successful light-changing commands.
+- `calibration.json`: optional per-device Kelvin-to-RGB samples. See [local calibration](CALIBRATION.md).
 - `.lock`: coordinates commands so they cannot interleave device transactions or saved-state updates. A concurrent command fails with a retry message.
 
 JSON files are written atomically, but applying the frame, saving restore state, and saving profile defaults are separate operations. A save failure can leave the LEDs changed; the error message says which save failed. Invalid existing configuration/state is reported instead of silently overwritten.
 
-`status` reports the **last CLI setting**, not a measurement of the LEDs. With no saved state it reports that the setting is unknown. Buttons, other controllers, unplugging, or power loss can make saved state stale; `toggle` still operates on that saved state. Commands cannot recover the color previously set by another app or a controller button. An acknowledged frame confirms delivery, not its physical appearance.
+`status` identifies the active color conversion and reports the **last CLI setting**, not a measurement of the LEDs. With no saved state it reports that the setting is unknown. Buttons, other controllers, unplugging, or power loss can make saved state stale; `toggle` still operates on that saved state. Commands cannot recover the color previously set by another app or a controller button. An acknowledged frame confirms delivery, not its physical appearance.
 
 ## Corrected USB behavior
 
@@ -69,11 +70,11 @@ The original implementation used the documented native power and brightness comm
 Inspection of the locally installed vendor app's USB implementation established its streaming convention:
 
 - Channel order is **GRB**.
-- Channel encoding is `round(15 + 240 × color/255 × brightness/100)`.
+- Generic channel encoding is `round(15 + 240 × color/255 × brightness/100)`. With local calibration, brightness-scaled RGB is rounded to integer bytes first, then mapped to the 15–255 channel range, matching Desktop's two-stage rounding.
 - Black is `[15,15,15]` for every zone.
 - Brightness is scaled into every frame; the native brightness getter is not used as a proxy for emitted brightness.
 
-The CLI sends complete solid-color frames using command 0x02, querying zone count with 0x03. It does not send 0x07/0x09 power or brightness writes. It retains the already working TLV framing and 64-byte HID report fragmentation. Black, day white at 30%, and day white at 10% were physically confirmed by the user during diagnosis. This implementation remains an approximate white conversion rather than Nanoleaf's proprietary hardware color calibration.
+The CLI sends complete solid-color frames using command 0x02, querying zone count with 0x03. It does not send 0x07/0x09 power or brightness writes. It retains the already working TLV framing and 64-byte HID report fragmentation. Black, day white at 30%, and day white at 10% were physically confirmed by the user during diagnosis. The generic approximation can look bluer than Desktop at the same nominal Kelvin. Local calibration provides device-specific RGB values instead; calibration data and vendor libraries are not bundled in this repository.
 
 Protocol reference: [Nanoleaf USB Lightstrip Communication Protocol](https://nanoleaf.atlassian.net/wiki/spaces/nlapid/pages/2615574530/Nanoleaf+USB+Lightstrip+Communication+Protocol). The streaming details above come from the vendor implementation and device testing; the public protocol page alone does not establish them.
 
@@ -104,3 +105,11 @@ Project code is available under the [MIT License](LICENSE). The Kelvin-to-RGB
 adaptation retains Tanner Helland's BSD 2-Clause notice; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Retain the applicable license
 and attribution notices when redistributing source or binaries.
+
+## Matching Desktop white temperature
+
+The generic conversion does not account for the lightstrip's LED hardware and
+can differ substantially from Nanoleaf Desktop. Optional local calibration is
+loaded from `calibration.json` and selected by connected device identifier.
+`nanoleaf status` shows whether it is using local calibration or the generic
+approximation. See [CALIBRATION.md](CALIBRATION.md) for the file format and limits.
