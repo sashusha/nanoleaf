@@ -254,25 +254,28 @@ multiple matching devices rather than choosing one arbitrarily.
 ## Download
 
 Download `nanoleaf-macos-arm64.zip` from [GitHub Releases](https://github.com/sashusha/nanoleaf/releases/latest).
-It includes the executable and license notices. The build targets Apple silicon
-(M1 or later) and macOS 12 or later; older macOS versions have not been physically
-tested. Intel Macs must build from source. A SHA-256 checksum is included with
-the release.
+It contains the signed app, installer, and license notices. It targets Apple
+silicon (M1 or later) and macOS 12 or later; older macOS versions have not been
+physically tested. Intel Macs must build from source. A SHA-256 checksum is
+included with the release.
 
-Extract the archive, then install from its directory:
+Extract the archive and run this from the extracted directory:
 
 ```sh
-mkdir -p "$HOME/.local/bin"
-install -m 755 nanoleaf "$HOME/.local/bin/nanoleaf"
-nanoleaf service enable
+./install.sh
 ```
 
-Ensure `~/.local/bin` is on your PATH. The executable is not Apple-notarized.
-If macOS blocks it, attempt to run it, then approve Nanoleaf under System Settings
-→ Privacy & Security → Open Anyway. A managed Mac may require IT approval.
-Enable the service while the Mac is active; grant the generated `Nanoleaf.app`
-Accessibility permission for shortcuts and Location Services permission for
-`nanoleaf schedule enable`.
+Keep `Nanoleaf.app` intact. The installer enables the service and creates
+`~/.local/bin/nanoleaf` as a symlink to the installed app's executable. Ensure
+`~/.local/bin` is on your PATH. Run the installer again for later updates.
+
+This release uses a persistent self-signed certificate, not Apple Developer ID
+or notarization. If macOS blocks it, attempt to run the app, then approve it under
+System Settings → Privacy & Security → Open Anyway. Managed Macs may require IT
+approval. Allow the installed app in Accessibility for shortcuts and Location
+Services for sunset scheduling. Switching from v0.1.0 requires fresh permission;
+subsequent same-certificate updates retained permissions on the development Mac.
+Other Macs remain unverified.
 
 ## Build and checks
 
@@ -321,3 +324,53 @@ Profiles are shared by hardware revision. See [CALIBRATION.md](CALIBRATION.md)
 for the schema, optional local overrides, rebuilding embedded profiles, provenance,
 and limitations. Matching profiles are embedded in the executable; installing
 Nanoleaf Desktop or a separate calibration file is not required.
+
+## Signing app releases
+
+App releases preserve a certificate-based identity across updates. Distribute
+the complete `Nanoleaf.app` signed with the same certificate. `service enable` preserves a supplied
+app's signature; bare executables still use a locally signed wrapper and may need
+permission refreshed after changes. Moving from an ad-hoc build to a persistent certificate
+requires a new authorization.
+
+The signed-release workflow requires a Developer ID Application certificate and
+its private key in the build Mac's Keychain. For notarization, first create a
+`notarytool` Keychain credential profile through Apple's normal account setup.
+Then run:
+
+```sh
+python3 Scripts/build-signed-release.py \
+  --identity 'Developer ID Application: YOUR NAME (TEAM_ID)' \
+  --version 0.2.0 \
+  --notary-profile nanoleaf-notary \
+  --output /tmp/nanoleaf-signed.zip
+```
+
+The script tests and builds, signs with hardened runtime, submits to Apple,
+staples the accepted ticket, verifies the app, and packages it with license
+notices and an installer. Signing credentials remain in Keychain. Omitting
+`--notary-profile` produces a signed but unnotarized archive. `--identity -` is
+only for testing packaging and does not provide stable update permissions.
+
+For an app release, extract it and run `./install.sh`. The installer preserves
+the whole app under Application Support, enables the service, and makes
+`~/.local/bin/nanoleaf` a symlink to it. Keep the app intact instead of copying
+its inner executable alone. The published v0.1.0 binary remains ad-hoc signed;
+a Developer ID release has not yet been published.
+
+For personal use, a persistent self-signed code-signing certificate can be used
+without an Apple Developer membership:
+
+```sh
+python3 Scripts/build-signed-release.py \
+  --identity 'YOUR CODE-SIGNING CERTIFICATE NAME OR SHA-1' \
+  --self-signed --version 0.2.1 --output /tmp/nanoleaf-local.zip
+```
+
+Keep the same certificate and private key in Keychain for subsequent builds.
+Do not recreate the certificate on every build or publish its private key.
+This mode includes the location entitlement required by hardened runtime.
+It does not provide Apple notarization or remove Gatekeeper download warnings.
+Accessibility and Location permissions survived an update between two
+self-signed app versions on the development Mac. Other Macs remain unverified.
+Changing certificates changes the app identity and requires new authorization.

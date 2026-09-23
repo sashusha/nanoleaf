@@ -126,3 +126,15 @@ permission and fix delivery depend on macOS Location Services.
 The generated service app successfully received macOS location authorization and
 a usable system location. Service status displayed calculated sunset/dusk times.
 The wrapper's signature and LaunchAgent executable path were checked locally.
+
+## Signed app updates
+
+All 27 test groups and the release build pass. Two self-signed app versions have
+different code-directory hashes and the same certificate-bound designated
+requirement. The installer preserves the whole signed app, and the hardened
+runtime build includes the location entitlement. After authorizing the first self-signed version, updating to version 0.2.1
+preserved Accessibility and Location authorization without changing privacy
+settings. The restarted service activated its keyboard event tap and received
+a usable location fix. This was verified on the development Mac; the strip was
+disconnected, so no physical shortcut behavior was tested during this update.
+Developer ID signing and notarization have not been tested.

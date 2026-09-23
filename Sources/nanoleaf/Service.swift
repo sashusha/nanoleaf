@@ -92,6 +92,20 @@ enum ServiceControl {
         let fm = FileManager.default
         let staging = ServiceIPC.directory.appendingPathComponent("Nanoleaf-" + UUID().uuidString + ".app")
         do {
+            // Distributed app releases must retain the developer's signature,
+            // resource seal, and notarization ticket across installation.
+            if Bundle.main.bundleURL.pathExtension == "app" {
+                try fm.copyItem(at: Bundle.main.bundleURL, to: staging)
+                let verify = Process()
+                verify.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+                verify.arguments = ["--verify", "--strict", staging.path]
+                let output = Pipe(); verify.standardOutput = output; verify.standardError = output
+                try verify.run()
+                let message = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                verify.waitUntilExit()
+                guard verify.terminationStatus == 0 else { throw CLIError("Service app signature is invalid: \(message)") }
+                return staging
+            }
             let contents = staging.appendingPathComponent("Contents")
             let binary = contents.appendingPathComponent("MacOS/nanoleaf")
             try fm.createDirectory(at: binary.deletingLastPathComponent(), withIntermediateDirectories: true)
