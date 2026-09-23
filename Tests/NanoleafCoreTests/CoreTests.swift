@@ -2,6 +2,91 @@ import Foundation
 import NanoleafCore
 
 final class CoreTests {
+    private let potsdam = SolarLocation(latitude: 52.4009, longitude: 13.0591)
+    func testSunsetSchedule() throws {
+        let date = ISO8601DateFormatter().date(from: "2026-09-20T12:00:00Z")!
+        let window = SunsetSchedule.window(on: date, location: potsdam)!
+        var config = Configuration()
+        config.sunsetAutomation = true
+        config.day = Profile(temperature: 5000, brightness: 40)
+        config.evening = Profile(temperature: 3000, brightness: 20)
+        var state = DisplayState(isOn: true)
+        XCTAssertEqual(try Command.parse(["schedule", "enable"]), .schedule(true))
+        XCTAssertEqual(try Command.parse(["schedule", "disable"]), .schedule(false))
+        XCTAssertEqual(try Command.parse(["schedule", "status"]), .schedule(nil))
+        XCTAssertThrowsError(try Command.parse(["schedule", "bogus"]))
+        XCTAssertEqual(SunsetSchedule.target(now: window.start.addingTimeInterval(-1), configuration: config, state: state, location: potsdam), nil)
+        XCTAssertEqual(SunsetSchedule.target(now: window.start, configuration: config, state: state, location: potsdam), config.day)
+        let midpoint = window.start.addingTimeInterval(window.end.timeIntervalSince(window.start) / 2)
+        XCTAssertEqual(SunsetSchedule.target(now: midpoint, configuration: config, state: state, location: potsdam), Profile(temperature: 4000, brightness: 30))
+        XCTAssertEqual(SunsetSchedule.target(now: window.end, configuration: config, state: state, location: potsdam), config.evening)
+        XCTAssertEqual(SunsetSchedule.target(now: window.end.addingTimeInterval(3600), configuration: config, state: state, location: potsdam), config.evening)
+        state.lastManualChange = midpoint
+        XCTAssertEqual(SunsetSchedule.target(now: window.end, configuration: config, state: state, location: potsdam), nil)
+        let restored = try JSONDecoder().decode(DisplayState.self, from: JSONEncoder().encode(state))
+        XCTAssertEqual(restored, state)
+        let tomorrow = SunsetSchedule.window(on: date.addingTimeInterval(86400), location: potsdam)!
+        XCTAssertEqual(SunsetSchedule.target(now: tomorrow.start, configuration: config, state: restored, location: potsdam), config.day)
+        state.lastManualChange = window.start.addingTimeInterval(-1)
+        XCTAssertEqual(SunsetSchedule.target(now: midpoint, configuration: config, state: state, location: potsdam), Profile(temperature: 4000, brightness: 30))
+        state.isOn = false
+        XCTAssertEqual(SunsetSchedule.target(now: midpoint, configuration: config, state: state, location: potsdam), nil)
+        state.isOn = true
+        config.sunsetAutomation = false
+        XCTAssertEqual(SunsetSchedule.target(now: midpoint, configuration: config, state: state, location: potsdam), nil)
+        let legacy = Data(#"{"day":{"temperature":4800,"brightness":30},"evening":{"temperature":3500,"brightness":30}}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(Configuration.self, from: legacy).sunsetAutomation, nil)
+    }
+
+    func testLocationSolarEvents() {
+        let date = ISO8601DateFormatter().date(from: "2026-06-21T12:00:00Z")!
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let greenwich = SunsetSchedule.window(on: date, location: SolarLocation(latitude: 0, longitude: 0), timeZone: utc)!
+        let east = SunsetSchedule.window(on: date, location: SolarLocation(latitude: 0, longitude: 15), timeZone: utc)!
+        XCTAssertTrue(abs(greenwich.start.timeIntervalSince(east.start) - 3600) < 60)
+        XCTAssertEqual(SunsetSchedule.window(on: date, location: SolarLocation(latitude: 90, longitude: 0)), nil)
+        XCTAssertEqual(SunsetSchedule.window(on: date, location: SolarLocation(latitude: .nan, longitude: 0)), nil)
+        XCTAssertEqual(SunsetSchedule.window(on: date, location: SolarLocation(latitude: 0, longitude: 181)), nil)
+        XCTAssertTrue(SunsetSchedule.summary(enabled: true, now: date).contains("waiting for system location"))
+    }
+
+    func testSystemTimeZone() {
+        let date = ISO8601DateFormatter().date(from: "2026-09-23T00:30:00Z")!
+        let system = SunsetSchedule.window(on: date, location: potsdam)!
+        let explicit = SunsetSchedule.window(on: date, location: potsdam, timeZone: .autoupdatingCurrent)!
+        XCTAssertEqual(system.start, explicit.start)
+        XCTAssertEqual(SunsetSchedule.calendar.timeZone.secondsFromGMT(for: date), TimeZone.autoupdatingCurrent.secondsFromGMT(for: date))
+        let berlin = SunsetSchedule.window(on: date, location: potsdam, timeZone: TimeZone(identifier: "Europe/Berlin")!)!
+        let newYork = SunsetSchedule.window(on: date, location: potsdam, timeZone: TimeZone(identifier: "America/New_York")!)!
+        // The same instant belongs to different calendar days in these zones.
+        XCTAssertTrue(berlin.start.timeIntervalSince(newYork.start) > 23 * 3600)
+        XCTAssertTrue(berlin.start.timeIntervalSince(newYork.start) < 25 * 3600)
+    }
+
+    func testSolarDates() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Berlin")!
+        let parser = ISO8601DateFormatter()
+        // Seasonal sanity checks in local time, independent of the Mac timezone.
+        for (day, earliest, latest) in [("2026-06-21", 21, 22), ("2026-12-21", 15, 17), ("2026-09-20", 19, 20)] {
+            let window = SunsetSchedule.window(on: parser.date(from: day + "T12:00:00Z")!, location: potsdam, timeZone: calendar.timeZone)!
+            let hour = calendar.component(.hour, from: window.start)
+            XCTAssertTrue(hour >= earliest && hour < latest)
+            XCTAssertTrue(window.end.timeIntervalSince(window.start) > 1200)
+            XCTAssertTrue(window.end.timeIntervalSince(window.start) < 4800)
+        }
+        // Every date in a leap year has ordered events within the same Potsdam day.
+        let start = parser.date(from: "2024-01-01T12:00:00Z")!
+        for offset in 0..<366 {
+            let date = start.addingTimeInterval(Double(offset) * 86400)
+            let window = SunsetSchedule.window(on: date, location: potsdam, timeZone: calendar.timeZone)!
+            XCTAssertTrue(window.end > window.start)
+            XCTAssertTrue(calendar.isDate(date, inSameDayAs: window.start))
+            XCTAssertTrue(calendar.isDate(date, inSameDayAs: window.end))
+        }
+    }
+
+
     func testIdlePolicy() {
         var policy = IdlePolicy()
         XCTAssertTrue(!policy.isSuppressed)
@@ -86,6 +171,9 @@ final class CoreTests {
     }
 
     func testModeProfiles() throws {
+        XCTAssertEqual(try Command.parse(["night"]), try Command.parse(["evening"]))
+        XCTAssertEqual(try Command.parse(["night", "--temp", "3200", "--brightness", "15", "--save"]),
+                       try Command.parse(["evening", "--temp", "3200", "--brightness", "15", "--save"]))
         XCTAssertEqual(ButtonEvent.actions([0x85, 0, 4, 0, 0, 1, 1]), [.mode])
         XCTAssertEqual(ButtonEvent.actions([0x85, 0, 4, 1, 0, 2, 1]), [.mode])
         XCTAssertEqual(ButtonEvent.actions([0x85, 0, 4, 0, 1, 1, 1]), [.power, .mode])
@@ -368,6 +456,10 @@ struct Checks {
         let tests = CoreTests()
         let cases: [(String, () throws -> Void)] = [
             ("Parsing", tests.testParsing),
+            ("Sunset schedule and manual overrides", tests.testSunsetSchedule),
+            ("Solar dates and seasons", tests.testSolarDates),
+            ("System time zone and date boundary", tests.testSystemTimeZone),
+            ("Location and polar solar events", tests.testLocationSolarEvents),
             ("Relative brightness", tests.testBrightnessSteps),
             ("Relative temperature", tests.testTemperatureSteps),
             ("Overlapping idle events", tests.testIdlePolicy),

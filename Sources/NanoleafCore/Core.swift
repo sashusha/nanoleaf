@@ -18,6 +18,7 @@ public struct Profile: Codable, Equatable {
 }
 
 public struct Configuration: Codable, Equatable {
+    public var sunsetAutomation: Bool?
     public var day = Profile(temperature: 4800, brightness: 30)
     public var evening = Profile(temperature: 3500, brightness: 30)
     public init() {}
@@ -46,6 +47,7 @@ public struct ConfigStore {
 
 public enum Command: Equatable {
     case help, config, status, on, off, toggle
+    case schedule(Bool?)
     case brightness(Int), temperature(Int), brightnessStep(Int), temperatureStep(Int)
     case profile(String, temperature: Int?, brightness: Int?, save: Bool)
 
@@ -53,6 +55,14 @@ public enum Command: Equatable {
         guard let name = args.first else { return .help }
         let rest = Array(args.dropFirst())
         switch name {
+        case "schedule":
+            guard rest.count == 1 else { throw CLIError("Usage: nanoleaf schedule enable|disable|status") }
+            switch rest[0] {
+            case "enable": return .schedule(true)
+            case "disable": return .schedule(false)
+            case "status": return .schedule(nil)
+            default: throw CLIError("Usage: nanoleaf schedule enable|disable|status")
+            }
         case "help", "--help", "-h", "config", "status", "on", "off", "toggle":
             guard rest.isEmpty else { throw CLIError("Unexpected arguments after \(name).") }
             return ["help": .help, "--help": .help, "-h": .help, "config": .config,
@@ -67,7 +77,7 @@ public enum Command: Equatable {
                 try Profile(temperature: 4800, brightness: n).validate(); return .brightness(n)
             }
             try Profile(temperature: n, brightness: 30).validate(); return .temperature(n)
-        case "day", "evening":
+        case "day", "evening", "night":
             var temp: Int?, brightness: Int?, save = false
             var seen = Set<String>(), i = 0
             while i < rest.count {
@@ -80,7 +90,7 @@ public enum Command: Equatable {
                 i += 2
             }
             try Profile(temperature: temp ?? 4800, brightness: brightness ?? 30).validate()
-            return .profile(name, temperature: temp, brightness: brightness, save: save)
+            return .profile(name == "night" ? "evening" : name, temperature: temp, brightness: brightness, save: save)
         default: throw CLIError("Unknown command: \(name). Run nanoleaf --help.")
         }
     }
@@ -145,6 +155,7 @@ public struct DisplayState: Codable, Equatable {
     // Retained nonzero setting for on after off/brightness 0.
     public var brightness: Int
     public var isOn: Bool
+    public var lastManualChange: Date?
     public var lastProfile: String?
     public var nextProfile: String { lastProfile == "day" ? "evening" : "day" }
     public init(temperature: Int = 4800, brightness: Int = 30, isOn: Bool = false, lastProfile: String? = nil) {

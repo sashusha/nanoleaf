@@ -5,73 +5,21 @@ import NanoleafCore
 let help = """
 Usage: nanoleaf <command>
 
-Commands:
-  on                     Restore remembered color and nonzero brightness
-  off                    Display black; keep remembered settings for on
-  toggle                 Switch the saved CLI on/off state; requires prior state
-  brightness <0-100>     Set integer brightness; positive turns on, zero blanks
-  brightness up|down     Adjust by 5 percentage points, clamped to 0–100
-  temp <2700-6500>       Set integer Kelvin; turn on at remembered brightness
-  temp up|down           Cooler/warmer by 100 K; preserves power and brightness
-  day [options]          Apply saved day defaults (initially 4800 K, 30%)
-  evening [options]      Apply saved evening defaults (initially 3500 K, 30%)
-  config                 Show profile defaults and their file path; no device needed
-  status                 Show last CLI setting and connected LED zone count
-  service enable|disable|status  Manage optional background control
-  help | --help | -h     Show this help; no arguments also shows help
+  on | off | toggle             Control power
+  day | evening | night         Apply a saved profile (night = evening)
+  brightness <0-100> | up|down   Set brightness or adjust by 5%
+  temp <2700-6500> | up|down     Set Kelvin or adjust by 100 K
+  schedule enable|disable|status Local sunset transition
+  config | status               Show defaults or saved device settings
+  service enable|disable|status Manage background control
 
-Options for day/evening only (use a space before each value):
-  --temp <2700-6500>     Override this run's temperature
-  --brightness <0-100>  Override this run's brightness
-  --save                 Apply and save the resulting defaults for that profile
-                         Unspecified values come from the saved profile.
+Profile options: --temp K --brightness N --save
+Without --save, overrides leave profile defaults unchanged.
 
-Remembered settings:
-  off and brightness 0 preserve the last nonzero brightness for on.
-  A zero-brightness profile also remembers its requested temperature.
-  Without prior state, remembered settings start at 4800 K and 30%,
-  independently of saved day/evening defaults. toggle requires prior CLI state.
-  One-time overrides update remembered settings but not profile defaults.
-
-Files under ~/Library/Application Support/nanoleaf/:
-  config.json            Saved day/evening defaults
-  state.json             Last CLI settings per device
-  calibration.json       Optional hardware calibration override
-
-status and toggle use saved CLI state, not measured LED state. Buttons, other
-controllers, and power loss can make it stale. Light commands and status require
-a connected device. Quit other lighting controllers before use.
-Calibration matches model and hardware revision exactly; status shows the match.
-Without a match, temperature uses approximate RGB white.
-Matching Desktop does not establish instrument-measured color temperature.
-No Nanoleaf Desktop, pairing, or network connection is required.
-Optional service: starts at login, keeps USB online every 3 seconds, and handles
-physical power presses using saved CLI settings. Normal commands route through
-it. Stops USB traffic when disconnected or asleep. Mode presses alternate saved
-day/evening profiles, starting with day when no profile has been selected.
-USB reconnection turns on at remembered color/brightness, even after offline off.
-Shift + Brightness Up/Down adjusts by 5 percentage points with Accessibility
-permission. Run service status after granting permission to activate shortcuts.
-F18/F19 adjust temperature warmer/cooler by 100 K, preserving on/off state.
-Keyboard adjustments show a brief Nanoleaf overlay centered on the display
-containing the pointer. Brightness up from off starts at 5%; down from off does nothing.
-Screensaver/display sleep temporarily blanks the strip without changing saved
-settings; they restore after both conditions clear. While idle, only off and
-status are accepted by the service. service status reports idle blanking.
-After replacing the executable, rerun service enable while the Mac is active.
-If shortcuts stop working, remove and re-add nanoleaf in Accessibility, then
-run service status.
-Disable the service before using another lighting controller.
-
-Examples:
-  nanoleaf day
-  nanoleaf evening --brightness 20
-  nanoleaf day --temp 5000 --brightness 35 --save
-  nanoleaf off
-  nanoleaf on
+More: https://github.com/sashusha/nanoleaf#readme
 """
 
-func execute(_ args: [String], transport supplied: HIDTransport? = nil, emit: (String) -> Void = { Swift.print($0) }) throws {
+func execute(_ args: [String], transport supplied: HIDTransport? = nil, manual: Bool = true, emit: (String) -> Void = { Swift.print($0) }) throws {
     let print = emit
     let command = try Command.parse(args)
     if command == .help { print(help); return }
@@ -84,11 +32,23 @@ func execute(_ args: [String], transport supplied: HIDTransport? = nil, emit: (S
     defer { close(fd) }
     guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { throw CLIError("Another nanoleaf command is running. Retry when it finishes.") }
     defer { flock(fd, LOCK_UN) }
+    if case let .schedule(enabled) = command {
+        var config = try store.load()
+        if let enabled { config.sunsetAutomation = enabled; try store.save(config) }
+        if ServiceControl.isEnabled {
+            // The service owns location permission and holds the current fix.
+            if let reply = try? ServiceIPC.call(["__schedule_status"]) { print(reply.output) }
+            else { print(SunsetSchedule.summary(enabled: config.sunsetAutomation == true, now: Date())) }
+        } else { print(SunsetSchedule.summary(enabled: config.sunsetAutomation == true, now: Date())) }
+        if !ServiceControl.isEnabled { print("Run nanoleaf service enable for automatic transitions.") }
+        return
+    }
     if command == .config {
         let config = try store.load()
         print("day:     \(config.day.temperature) K, \(config.day.brightness)%")
         print("evening: \(config.evening.temperature) K, \(config.evening.brightness)%")
         print("Config: \(store.url.path)")
+        print(SunsetSchedule.summary(enabled: config.sunsetAutomation == true, now: Date()))
         return
     }
     // Validate config before touching hardware. A corrupt profile never changes LEDs.
@@ -148,9 +108,11 @@ func execute(_ args: [String], transport supplied: HIDTransport? = nil, emit: (S
     case .temperatureStep(let delta): try device.stepTemperature(delta)
     case .temperature(let kelvin): try device.temperature(kelvin)
     case .profile(let name, _, _, _): try device.apply(selected!, name: name)
-    case .help, .config, .status: return
+    case .help, .config, .status, .schedule: return
     }
-    do { try stateStore.save(device.state, device: transport.identifier) }
+    var remembered = device.state
+    if manual { remembered.lastManualChange = Date() }
+    do { try stateStore.save(remembered, device: transport.identifier) }
     catch { throw CLIError("Frame sent, but its restore state could not be saved: \(error)") }
     if case let .profile(name, _, _, save) = command, save {
         if name == "day" { config!.day = selected! } else { config!.evening = selected! }
@@ -169,6 +131,7 @@ func run() throws {
     let args = Array(CommandLine.arguments.dropFirst())
     if args.first == "service" { try ServiceControl.run(Array(args.dropFirst())); return }
     let command = try Command.parse(args)
+    if case .schedule = command { try execute(args); return }
     if command == .help || command == .config { try execute(args); return }
     if ServiceControl.isEnabled {
         let reply = try ServiceIPC.call(args)

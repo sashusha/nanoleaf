@@ -9,7 +9,7 @@ final class BrightnessKeys {
     private var capturedFunctions = Set<UInt16>()
     var onStep: ((Int, Bool) -> Void)?
     var status: String {
-        tap == nil ? "Keyboard shortcuts unavailable. Allow nanoleaf in System Settings > Privacy & Security > Accessibility, then run nanoleaf service status." : "Shift + Brightness Up/Down active (5 percentage points). F18/F19: warmer/cooler by 100 K."
+        tap == nil ? "Keyboard shortcuts unavailable. Allow Nanoleaf.app in System Settings > Privacy & Security > Accessibility, then run nanoleaf service status." : "Shift + Brightness Up/Down active (5 percentage points). F18/F19: warmer/cooler by 100 K."
     }
 
     func start() {

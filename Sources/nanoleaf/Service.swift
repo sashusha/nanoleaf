@@ -87,6 +87,33 @@ enum ServiceControl {
         try process.run(); process.waitUntilExit()
         if process.terminationStatus == 0 { try launchctl(["bootout", "\(domain)/\(label)"]) }
     }
+    static var serviceApp: URL { ServiceIPC.directory.appendingPathComponent("Nanoleaf.app") }
+    static func prepareServiceApp(executable: String) throws -> URL {
+        let fm = FileManager.default
+        let staging = ServiceIPC.directory.appendingPathComponent("Nanoleaf-" + UUID().uuidString + ".app")
+        do {
+            let contents = staging.appendingPathComponent("Contents")
+            let binary = contents.appendingPathComponent("MacOS/nanoleaf")
+            try fm.createDirectory(at: binary.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try fm.copyItem(atPath: executable, toPath: binary.path)
+            let purpose = "Nanoleaf uses your approximate location to time the evening light transition at local sunset."
+            let info: [String: Any] = ["CFBundleIdentifier": label, "CFBundleName": "Nanoleaf",
+                "CFBundleExecutable": "nanoleaf", "CFBundlePackageType": "APPL",
+                "CFBundleVersion": "1", "LSUIElement": true,
+                "NSLocationUsageDescription": purpose, "NSLocationWhenInUseUsageDescription": purpose]
+            try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+                .write(to: contents.appendingPathComponent("Info.plist"), options: .atomic)
+            let sign = Process()
+            sign.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+            sign.arguments = ["--force", "--sign", "-", staging.path]
+            let output = Pipe(); sign.standardOutput = output; sign.standardError = output
+            try sign.run()
+            let message = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            sign.waitUntilExit()
+            guard sign.terminationStatus == 0 else { throw CLIError("Cannot prepare service app: \(message)") }
+            return staging
+        } catch { try? fm.removeItem(at: staging); throw error }
+    }
     static func run(_ args: [String]) throws {
         guard args.count == 1 else { throw CLIError("Usage: nanoleaf service enable|disable|status") }
         switch args[0] {
@@ -95,11 +122,16 @@ enum ServiceControl {
             guard let executable = Bundle.main.executableURL?.resolvingSymlinksInPath().path else { throw CLIError("Cannot locate this executable.") }
             try FileManager.default.createDirectory(at: plist.deletingLastPathComponent(), withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: ServiceIPC.directory, withIntermediateDirectories: true)
-            let settings: [String: Any] = ["Label": label, "ProgramArguments": [executable, "service", "run"],
+            let staging = try prepareServiceApp(executable: executable)
+            defer { try? FileManager.default.removeItem(at: staging) }
+            let serviceExecutable = serviceApp.appendingPathComponent("Contents/MacOS/nanoleaf").path
+            let settings: [String: Any] = ["Label": label, "ProgramArguments": [serviceExecutable, "service", "run"],
                 "RunAtLoad": true, "KeepAlive": true, "ThrottleInterval": 30,
                 "StandardErrorPath": ServiceIPC.directory.appendingPathComponent("service.log").path]
             let data = try PropertyListSerialization.data(fromPropertyList: settings, format: .xml, options: 0)
             try stopIfLoaded()
+            if FileManager.default.fileExists(atPath: serviceApp.path) { try FileManager.default.removeItem(at: serviceApp) }
+            try FileManager.default.moveItem(at: staging, to: serviceApp)
             try data.write(to: plist, options: .atomic)
             try launchctl(["bootstrap", domain, plist.path])
             print("Service enabled and starts at login. Run nanoleaf service status to check the device, idle blanking, and keyboard shortcuts.")
@@ -119,6 +151,7 @@ enum ServiceControl {
 }
 
 final class BackgroundService {
+    private let systemLocation = SystemLocation()
     private let brightnessKeys = BrightnessKeys()
     private let brightnessOverlay = BrightnessOverlay()
     private var transport: HIDTransport?
@@ -129,6 +162,7 @@ final class BackgroundService {
             if !busy { DispatchQueue.main.async { [weak self] in self?.updateIdleOutput() } }
         }
     }
+    private var lastScheduleCheck = Date.distantPast
     private var idle = IdlePolicy()
     private var outputSuppressed: Bool?
     private var distributedObservers: [NSObjectProtocol] = []
@@ -168,7 +202,7 @@ final class BackgroundService {
             if suppress { try blank(usb) }
             else {
                 let state = try StateStore(url: ServiceIPC.directory.appendingPathComponent("state.json")).load(device: usb.identifier)
-                try execute([reconnect.shouldTurnOn(savedState: state) ? "on" : "off"], transport: usb, emit: { _ in })
+                try execute([reconnect.shouldTurnOn(savedState: state) ? "on" : "off"], transport: usb, manual: false, emit: { _ in })
                 reconnect.didRestore()
             }
             outputSuppressed = suppress
@@ -195,7 +229,7 @@ final class BackgroundService {
             let suppress = idle.isSuppressed
             if suppress { try blank(usb) }
             else {
-                try execute([reconnect.shouldTurnOn(savedState: state) ? "on" : "off"], transport: usb, emit: { _ in })
+                try execute([reconnect.shouldTurnOn(savedState: state) ? "on" : "off"], transport: usb, manual: false, emit: { _ in })
                 reconnect.didRestore()
             }
             transport = usb
@@ -224,6 +258,28 @@ final class BackgroundService {
         catch { log(error); busy = false; reconcile(); return }
         busy = false
         drainButtons()
+        updateSchedule()
+    }
+    private func updateSchedule() {
+        let now = Date()
+        guard !busy, !asleep, !idle.isSuppressed, let usb = transport,
+              now.timeIntervalSince(lastScheduleCheck) >= 10 else { return }
+        lastScheduleCheck = now
+        busy = true
+        defer { busy = false }
+        do {
+            let config = try ConfigStore().load()
+            let store = StateStore(url: ServiceIPC.directory.appendingPathComponent("state.json"))
+            guard let state = try store.load(device: usb.identifier),
+                  let location = systemLocation.location,
+                  let target = SunsetSchedule.target(now: now, configuration: config, state: state, location: location) else { return }
+            // Scheduling never turns an off strip on. Resume at the current point
+            // after wake/reconnect; idle blanking continues to own the output.
+            guard state.isOn else { return }
+            guard state.temperature != target.temperature || state.brightness != target.brightness else { return }
+            try execute(["evening", "--temp", String(target.temperature), "--brightness", String(target.brightness)],
+                        transport: usb, manual: false, emit: { _ in })
+        } catch { log(error) }
     }
     private func drainButtons() {
         guard !idle.isSuppressed else { buttons.removeAll(); return }
@@ -243,11 +299,28 @@ final class BackgroundService {
             busy = false
         }
     }
+    private func scheduleStatus() -> String {
+        systemLocation.refresh()
+        do {
+            let config = try ConfigStore().load()
+            var result = SunsetSchedule.summary(enabled: config.sunsetAutomation == true, now: Date(), location: systemLocation.location)
+            if config.sunsetAutomation == true { result += "\n" + systemLocation.status }
+            if config.sunsetAutomation == true, let usb = transport,
+               let state = try StateStore(url: ServiceIPC.directory.appendingPathComponent("state.json")).load(device: usb.identifier),
+               let location = systemLocation.location,
+               let window = SunsetSchedule.window(on: Date(), location: location),
+               let manual = state.lastManualChange, manual >= window.start {
+                result += " Manual override until tomorrow's sunset."
+            }
+            return result
+        } catch { return "Sunset schedule unavailable: \(error)" }
+    }
     private func handle(_ args: [String]) -> ServiceReply {
+        if args == ["__schedule_status"] { return ServiceReply(output: scheduleStatus()) }
         if args == ["__service_status"] {
             brightnessKeys.start()
             let deviceStatus = transport == nil ? "Waiting for device.\(lastError.map { " Last error: \($0)" } ?? "")" : "Connected. Keepalive: 3 seconds. Physical power and day/evening mode handling active."
-            return ServiceReply(output: deviceStatus + "\n" + (idle.isSuppressed ? "Idle blanking active; saved light settings preserved." : "Screensaver/display-sleep blanking ready.") + "\n" + brightnessKeys.status)
+            return ServiceReply(output: deviceStatus + "\n" + (idle.isSuppressed ? "Idle blanking active; saved light settings preserved." : "Screensaver/display-sleep blanking ready.") + "\n" + brightnessKeys.status + "\n" + scheduleStatus())
         }
         guard !busy else { return ServiceReply(output: "", error: "Device is busy; retry the command.") }
         var lines: [String] = []
@@ -310,6 +383,7 @@ final class BackgroundService {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         app.finishLaunching()
+        systemLocation.start()
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [self] _ in setIdle(.systemSleep, active: true); asleep = true; disconnect() })
         observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [self] _ in asleep = false; idle.set(.systemSleep, active: false); reconcile() })

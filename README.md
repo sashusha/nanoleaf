@@ -42,15 +42,19 @@ Initial defaults: **day 4800 K/30%**, **evening 3500 K/30%**. Brightness accepts
 | `brightness up` / `down` | Adjust by 5 percentage points. Up from off starts at 5%; down from off does nothing. |
 | `temp up` / `down` | Adjust cooler/warmer by 100 K, preserving brightness and on/off state. |
 | `temp K` | Set the temperature and turn on at the remembered nonzero brightness. |
-| `day` / `evening` | Apply that profile's saved values, with any supplied overrides. Positive brightness turns on; zero sends black. |
+| `day` / `evening` / `night` | Apply that profile's saved values, with any supplied overrides. Positive brightness turns on; zero sends black. |
 | `config` | Show effective profile defaults and their file path. Does not require the device. |
 | `status` | Show connected zone count, calibration, and the last saved CLI setting. |
+| `schedule enable` / `disable` / `status` | Manage the local evening transition; requires the service to apply it. |
 | `service enable` / `disable` / `status` | Manage optional background control and login startup. |
 | `help`, `--help`, `-h`, or no arguments | Show help without accessing the device or configuration. |
 
 Light commands and `status` require a connected device. Help, `config`, and service management work without one. Help flags are top-level commands; `nanoleaf day --help` is not supported.
 
 ### Profiles and remembered settings
+
+`night` is an alias for `evening`, including overrides and `--save`. Both use
+the same saved evening profile.
 
 `--temp`, `--brightness`, and `--save` are available only for `day` and `evening`. Use separate arguments such as `--temp 5000`, not `--temp=5000`. Missing values, duplicate options, unknown options, and out-of-range values are rejected.
 
@@ -83,8 +87,11 @@ nanoleaf service status
 nanoleaf service disable
 ```
 
-The service runs the same executable as a per-user macOS LaunchAgent and starts
-at login. It needs no administrator access. Normal light commands automatically
+The service runs a copy of the same executable as a per-user macOS LaunchAgent
+and starts at login. `service enable` creates a locally signed app wrapper at
+`~/Library/Application Support/nanoleaf/Nanoleaf.app`, which gives macOS an app
+identity for location permission. Only the CLI binary needs to be copied to
+another Mac; enabling the service creates its wrapper there. It needs no administrator access. Normal light commands automatically
 route through a private local Unix socket to the service, which owns the USB
 connection. There is no network listener.
 
@@ -120,10 +127,10 @@ a competing USB connection.
 
 The login configuration is
 `~/Library/LaunchAgents/io.github.sashusha.nanoleaf.plist`.
-It records the executable's absolute path; rerun `service enable` after moving or
-replacing the executable. Runtime files `service.sock`, `.service-lock`, and
+It records the generated app's executable path. Rerun `service enable` after
+replacing the CLI to update the service's copy. Runtime files `service.sock`, `.service-lock`, and
 `service.log` are under the configuration directory. The log records errors, not
-routine keepalives. Disabling removes the login configuration and preserves settings.
+routine keepalives. Disabling removes the login configuration and preserves settings and the app wrapper.
 
 ## Screensaver and display sleep
 
@@ -146,13 +153,57 @@ These event-based rules apply while the service is running. Screensaver detectio
 uses macOS distributed notifications, verified on the development Mac but not a
 publicly documented Apple contract. Restart the service while the Mac is active.
 
+## Automatic evening transition
+
+```sh
+nanoleaf schedule enable
+nanoleaf schedule status
+nanoleaf schedule disable
+```
+
+With the service running, the optional schedule blends the saved day temperature
+and brightness into the saved evening values between **sunset and the end of
+civil twilight at your system-provided location**. There is no automatic morning switch; use `day`
+when wanted. `night` and `evening` remain manual profile commands.
+
+The service requests permission from macOS Location Services when the schedule
+is enabled. Allow Nanoleaf in System Settings → Privacy & Security → Location
+Services. The service app wrapper contains the purpose message macOS uses for
+the consent dialog. Each Mac grants its own permission.
+
+An approximate system location is requested hourly. Coordinates stay in memory,
+are never written to configuration or logs, and expire after two hours. Disabling
+the schedule clears them. Without permission or a usable location, automatic
+transitions pause; manual controls continue to work. `service status` reports
+location availability. There is no fixed-city fallback. Location Services itself
+may need connectivity; Nanoleaf makes no network request for the calculation.
+
+Dates and displayed times follow the Mac's automatically updating time zone.
+Sunset and civil dusk are calculated locally using
+[NOAA's solar equations](https://gml.noaa.gov/grad/solcalc/solareqns.PDF).
+If either event does not occur at the current location that day, such as during
+polar day or night, the schedule leaves the light unchanged.
+
+The service checks the transition about every 12 seconds using its existing
+keepalive timer and sends only changed settings. After dusk it uses the evening
+profile; before sunset it leaves the current setting alone. Manual CLI, keyboard,
+and controller-button changes pause automation until the next sunset. Changes
+made during twilight cancel the rest of that day's transition. The override is
+saved in `state.json` and survives restarts.
+
+The schedule never turns an off strip on and does not override screensaver or
+display-sleep blanking. After wake or USB reconnection it catches up to the current
+transition point, unless a manual override is active. Normal USB reconnect power
+behavior still applies. Profile defaults remain unchanged. Enabling/disabling
+is saved as `sunsetAutomation` in `config.json`; it is disabled by default.
+
 ## Keyboard brightness and temperature shortcuts
 
 With the service running, **Shift + display Brightness Up/Down** changes the strip
-by 5 percentage points, clamped to 0–100. Allow the installed `nanoleaf` executable
+by 5 percentage points, clamped to 0–100. Allow `~/Library/Application Support/nanoleaf/Nanoleaf.app`
 in System Settings → Privacy & Security → Accessibility, then run
 `nanoleaf service status` to activate the listener and check its status.
-Brightness shortcuts need no Keychron remapping or additional helper app.
+Brightness shortcuts need no Keychron remapping.
 
 For display-brightness keys, only the Shift combination is intercepted; plain
 presses and combinations with Control, Option, Command, or Fn pass through.
@@ -174,8 +225,8 @@ keys rather than F1/F2. The shortcuts apply across keyboards.
 without needing keyboard permission. Up from off turns on at 5%; down from off
 has no effect. Temperature and saved profile defaults are preserved.
 Without Accessibility permission, USB service and CLI commands still work.
-After replacing the executable, macOS may require you to remove and re-add it
-in Accessibility, even if its existing switch is enabled. Then run
+After updating the service, macOS may require you to remove and re-add
+`Nanoleaf.app` in Accessibility, even if its existing switch is enabled. Then run
 `nanoleaf service status` to activate shortcuts.
 
 F18/F19 (without Shift, Control, Option, or Command) adjust
@@ -200,6 +251,29 @@ In standalone mode the CLI opens the USB device directly and exits after its
 frame is acknowledged. The optional service keeps the connection open. Both refuse
 multiple matching devices rather than choosing one arbitrarily.
 
+## Download
+
+Download `nanoleaf-macos-arm64.zip` from [GitHub Releases](https://github.com/sashusha/nanoleaf/releases/latest).
+It includes the executable and license notices. The build targets Apple silicon
+(M1 or later) and macOS 12 or later; older macOS versions have not been physically
+tested. Intel Macs must build from source. A SHA-256 checksum is included with
+the release.
+
+Extract the archive, then install from its directory:
+
+```sh
+mkdir -p "$HOME/.local/bin"
+install -m 755 nanoleaf "$HOME/.local/bin/nanoleaf"
+nanoleaf service enable
+```
+
+Ensure `~/.local/bin` is on your PATH. The executable is not Apple-notarized.
+If macOS blocks it, attempt to run it, then approve Nanoleaf under System Settings
+→ Privacy & Security → Open Anyway. A managed Mac may require IT approval.
+Enable the service while the Mac is active; grant the generated `Nanoleaf.app`
+Accessibility permission for shortcuts and Location Services permission for
+`nanoleaf schedule enable`.
+
 ## Build and checks
 
 Requires macOS 12 or later and Apple's Swift toolchain (Xcode or Command Line Tools). Run these commands from the project directory:
@@ -212,7 +286,7 @@ install -m 755 .build/release/nanoleaf "$HOME/.local/bin/nanoleaf"
 ```
 
 For background control, run `nanoleaf service enable` after installation or
-replacement, while the Mac is active. This registers the installed path and
+replacement, while the Mac is active. This updates the local app wrapper and
 restarts the service. Keyboard shortcuts also require Accessibility permission.
 
 To use another Mac, build there or copy an executable compatible with its macOS

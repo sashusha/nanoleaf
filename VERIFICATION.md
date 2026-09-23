@@ -7,7 +7,7 @@ inspections below were performed by Codex, not independently reviewed by a human
 
 ## Automated checks
 
-All 23 test groups pass, and the release executable builds successfully.
+All 27 test groups pass, and the release executable builds successfully.
 The dependency-free suite covers:
 
 - Argument parsing, ranges, and configuration preservation.
@@ -88,8 +88,8 @@ On macOS 26 and later, the indicator uses NSGlassEffectView with the clear style
 Older versions use a rounded, masked NSVisualEffectView; that fallback has not
 been tested on an older Mac.
 
-Replacing the executable may invalidate its Accessibility authorization even when
-the switch remains enabled. Remove and re-add the installed executable if needed,
+Updating the service app may invalidate its Accessibility authorization even when
+the switch remains enabled. Remove and re-add Nanoleaf.app if needed,
 then run `nanoleaf service status` to retry keyboard-listener activation.
 
 ## Keyboard temperature adjustment
@@ -109,3 +109,20 @@ sleeps, and restoration of the previous color and brightness after dismissal or
 wake, using the installed service. Saved-state file checksums stayed unchanged
 across both tests. Automated checks cover duplicate and overlapping idle reasons,
 including display wake while the screensaver remains active.
+
+## Sunset scheduling
+
+Automated checks cover the night/evening alias, schedule controls, transition
+endpoints and midpoint, manual overrides across restarts and days, off-state
+preservation, legacy configuration loading, seasonal timing bounds, and ordered
+solar events throughout a leap year, system time-zone selection, and date
+boundaries across time zones. A complete real sunset transition has not
+been physically observed. Solar times are approximate, not measured locally.
+
+Location-based solar checks cover longitude changes, invalid coordinates,
+missing location, and polar conditions without a sunset window. Location
+permission and fix delivery depend on macOS Location Services.
+
+The generated service app successfully received macOS location authorization and
+a usable system location. Service status displayed calculated sunset/dusk times.
+The wrapper's signature and LaunchAgent executable path were checked locally.
