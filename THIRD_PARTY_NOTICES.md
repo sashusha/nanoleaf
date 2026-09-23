@@ -4,8 +4,7 @@
 
 `Wire.rgb(kelvin:)` in `Sources/NanoleafCore/Core.swift` adapts Tanner Helland's
 Kelvin-to-RGB approximation to Swift and the CLI's 2700–6500 K range.
-The upstream BSD 2-Clause notice is retained below. It applies to this adaptation;
-the project's MIT license does not replace that notice.
+The following BSD 2-Clause notice applies to that adaptation.
 
 - Algorithm: https://tannerhelland.com/2012/09/18/convert-temperature-rgb-algorithm-code.html
 - Author's code licensing statement: https://tannerhelland.com/code.html

@@ -1,140 +1,48 @@
 # Verification
 
-This project was entirely vibe-coded with OpenAI Codex, including the code,
-automated tests, and documentation. The only human verification was testing the
-actual CLI during regular, everyday use. The automated checks and technical
-inspections below were performed by Codex, not independently reviewed by a human.
+Physical observations cover one **NL82K2, hardware 1.1.0, firmware 1.5.0**.
+Human verification consisted of everyday CLI use; automated checks and technical
+inspections were performed by Codex, not independently reviewed.
 
 ## Automated checks
 
-All 27 test groups pass, and the release executable builds successfully.
-The dependency-free suite covers:
+All 27 test groups pass and the release builds. Coverage includes parsing and
+aliases, saved-state/configuration compatibility, rejected writes, frame encoding,
+calibration selection, relative adjustments, button handling, reconnect policy,
+overlapping idle events, sunset interpolation, manual overrides, time zones,
+invalid locations, and polar conditions.
 
-- Argument parsing, ranges, and configuration preservation.
-- Captured power-button events, mode-button decoding, and malformed event rejection.
-- Profile cycling, compatibility with existing state, persisted selection, and failed-frame preservation.
-- Reconnection turns on; startup preserves state; failed reconnect restores can retry.
-- Duplicate and overlapping screensaver, display-sleep, and system-sleep events.
-- TLV responses, HID packet boundaries, and reference frame fixtures.
-- Zero/low brightness, temperature changes, and off/on restoration.
-- Saved-state validation and preservation after rejected writes.
-- Calibration validation, exact hardware matching, local overrides, and compatibility loading.
-- Bundled profile selection and calibrated frame scaling.
+The calibrated output matched the Desktop pipeline for all 7,602 tested frames
+(2700–6500 K at 10% and 30%). Embedded calibration generation is deterministic.
+Binary inspection found only system-library dependencies.
 
-Embedded profile generation is deterministic. The calibrated Swift output was
-compared with the Desktop calibration and brightness pipeline for all 7,602
-frames spanning 2700–6500 K at 10% and 30% brightness, with matching results.
+## Observed behavior
 
-## Device checks and everyday usage
+- White near 4000 K visually matched Desktop; brightness changes dimmed the strip,
+  off was fully dark, and on restored the remembered setting.
+- Physical power toggled off/restored; mode alternated saved day/evening profiles.
+- USB reconnect restored the remembered setting, including after an offline
+  physical power-off.
+- Screensaver and display sleep blanked/restored the strip without changing the
+  saved-state file.
+- Brightness shortcuts changed the strip without changing monitor brightness;
+  F18/F19 temperature shortcuts and centered indicators worked.
 
-Tested hardware: **NL82K2, revision 1.1.0, firmware 1.5.0**.
+Service startup/shutdown, local command routing, malformed requests, stalled
+clients, socket permissions, and system location delivery were checked locally.
 
-The installed CLI selects `nl82k2-hw-1.1.0` from the executable without a local
-calibration override. The profile contains the same 3,801 RGB samples used in
-the physical tests.
+## Signed updates
 
-Human observations during everyday CLI use indicated a match to Desktop's white near 4000 K at 30%.
-The installed CLI sequence **4000 K/30% → 10% → off → on at 10% → 30%**
-produced visible dimming, complete darkness, and restoration of white and
-brightness as observed by the user. Codex checked that profile defaults remained unchanged.
+Two self-signed app versions had different code hashes and the same certificate
+identity. After the first was authorized, installing the second preserved both
+permissions: its event tap activated and a fresh location fix arrived without
+reauthorization. The strip was disconnected during this test. The final release
+archive passed signature verification and executable startup checks; it contains
+no private-key files or local user build paths.
 
-Binary dependency inspection showed only system libraries. Nanoleaf Desktop
-and its libraries are not required at runtime.
+## Not verified
 
-## Background service checks
-
-Three-second keepalives maintained online mode during repeated physical power
-presses on the tested strip. With the service handling those events, the user
-confirmed complete darkness and restoration of the same 4000 K/30% white.
-USB unplug/reconnect restored the same setting automatically. Local command
-routing, invalid commands, malformed JSON, and stalled-client handling were
-checked against the running service. Login-service enable/disable and standalone
-operation after disabling were also checked; the local socket is owner-only.
-
-Full system sleep/wake behavior has not been physically verified.
-Battery impact has not been measured.
-
-The user also confirmed that the installed service’s mode button alternates
-between the saved evening (3500 K/30%) and day (4500 K/30%) profiles.
-
-The user confirmed laptop disconnect → physical power off → laptop reconnect
-turns the strip on at the remembered CLI setting.
-
-## Scope and limitations
-
-Physical results cover one device; other units and hardware revisions have not
-been independently tested. Visual agreement with Desktop is not an
-instrument measurement of color temperature.
-
-`status` reports saved CLI settings, not measured LED state. Another controller,
-a button, or power loss can make those settings stale. A frame acknowledgement
-confirms delivery, not physical appearance. These verification results are test
-evidence, not a live reading of the connected strip.
-
-## Keyboard brightness shortcuts
-
-Relative-brightness checks cover parsing, limits, off behavior, temperature
-preservation, and failed-write state preservation. The user confirmed that two Shift + Brightness Up presses followed by two
-Shift + Brightness Down presses brighten the strip and restore its original
-level without changing monitor brightness, using the installed service.
-
-## Keyboard indicator
-
-The user confirmed the centered indicator works for brightness and temperature.
-It stays visible for 2.2 seconds before fading. Fullscreen and multi-display
-placement have not been independently verified.
-
-On macOS 26 and later, the indicator uses NSGlassEffectView with the clear style.
-Older versions use a rounded, masked NSVisualEffectView; that fallback has not
-been tested on an older Mac.
-
-Updating the service app may invalidate its Accessibility authorization even when
-the switch remains enabled. Remove and re-add Nanoleaf.app if needed,
-then run `nanoleaf service status` to retry keyboard-listener activation.
-
-## Keyboard temperature adjustment
-
-Relative-temperature checks cover parsing, range limits,
-brightness/profile preservation, off-state preservation, and rejected writes.
-The remapped Keychron keys were captured as F18/F19 (macOS keycodes 79/80),
-including the system function-key flag. The user confirmed that the installed F18/F19 temperature bindings work.
-
-Both brightness and temperature indicators use the full display frame’s center,
-on the display containing the pointer. Placement is shared by both modes.
-
-## Idle blanking
-
-The user confirmed complete darkness when the screensaver starts or the display
-sleeps, and restoration of the previous color and brightness after dismissal or
-wake, using the installed service. Saved-state file checksums stayed unchanged
-across both tests. Automated checks cover duplicate and overlapping idle reasons,
-including display wake while the screensaver remains active.
-
-## Sunset scheduling
-
-Automated checks cover the night/evening alias, schedule controls, transition
-endpoints and midpoint, manual overrides across restarts and days, off-state
-preservation, legacy configuration loading, seasonal timing bounds, and ordered
-solar events throughout a leap year, system time-zone selection, and date
-boundaries across time zones. A complete real sunset transition has not
-been physically observed. Solar times are approximate, not measured locally.
-
-Location-based solar checks cover longitude changes, invalid coordinates,
-missing location, and polar conditions without a sunset window. Location
-permission and fix delivery depend on macOS Location Services.
-
-The generated service app successfully received macOS location authorization and
-a usable system location. Service status displayed calculated sunset/dusk times.
-The wrapper's signature and LaunchAgent executable path were checked locally.
-
-## Signed app updates
-
-All 27 test groups and the release build pass. Two self-signed app versions have
-different code-directory hashes and the same certificate-bound designated
-requirement. The installer preserves the whole signed app, and the hardened
-runtime build includes the location entitlement. After authorizing the first self-signed version, updating to version 0.2.1
-preserved Accessibility and Location authorization without changing privacy
-settings. The restarted service activated its keyboard event tap and received
-a usable location fix. This was verified on the development Mac; the strip was
-disconnected, so no physical shortcut behavior was tested during this update.
-Developer ID signing and notarization have not been tested.
+Other devices, hardware revisions, Macs, older macOS versions, fullscreen and
+multi-display placement, full system sleep/wake, battery impact, a complete real
+sunset transition, and Developer ID/notarized releases. Visual matching is not
+an instrument measurement of color temperature.

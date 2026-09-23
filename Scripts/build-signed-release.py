@@ -14,7 +14,7 @@ def run(*args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--identity', required=True, help='Developer ID Application identity name or SHA-1; - for local testing only')
+    parser.add_argument('--identity', required=True, help='Code-signing identity name or SHA-1; - for ad-hoc testing only')
     parser.add_argument('--version', required=True)
     parser.add_argument('--self-signed', action='store_true', help='Use a persistent local certificate; not eligible for notarization')
     parser.add_argument('--notary-profile', help='Existing notarytool Keychain profile; no credentials on the command line')
