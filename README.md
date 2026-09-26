@@ -79,10 +79,9 @@ local socket. Without the service, commands open USB directly and exit.
 - A three-second keepalive maintains online mode. Physical power toggles the
   remembered setting; mode alternates saved day/evening profiles, starting with
   day if none was selected. CLI profile selections participate in that cycle.
-- On each connection, the service sets native offline brightness to zero, so
-  the strip goes dark when the laptop disconnects. Online brightness still uses
-  RGB frames. Tested on hardware 1.1.0, firmware 1.5.0; offline button overrides
-  and persistence through power loss are unverified.
+- On each connection, the service requests native offline brightness zero.
+  This dims offline scenes but does not guarantee darkness; see setup below.
+  Online brightness uses RGB frames independently.
 - USB reconnect turns the strip on at remembered color/brightness, even after
   it was switched off while disconnected. Startup and USB-error recovery preserve
   saved on/off state; initial startup with no state leaves it off.
@@ -90,13 +89,30 @@ local socket. Without the service, commands open USB directly and exit.
   both clear. While blanked, controller buttons are ignored and only `off` and
   `status` light commands are accepted. A reconnect while idle waits to turn on.
 - System sleep attempts to blank the strip, then releases USB.
-- Disabling the service stops keepalives; offline brightness remains zero.
+- Disabling the service stops keepalives; the native brightness setting is retained.
   Do this before using another lighting controller.
 
 Enable/restart while the Mac is active: idle detection depends on notifications
 received while running. USB contention/errors retry every 30 seconds while the
 device is present. An unreachable enabled service reports an error instead of
 opening a competing USB connection.
+
+## Darkness when disconnected
+
+A one-time offline scene selection is needed on the tested NL82K2 hardware 1.1.0,
+firmware 1.5.0:
+
+1. Connect with the service running so it applies the minimum offline brightness.
+2. Disconnect the laptop, leaving the strip powered. Use the controller’s **mode**
+   button to select a scene that stays completely dark; wait at least 15 seconds
+   to rule out a temporary fade. Use mode, not power.
+3. Reconnect, confirm normal lighting, then disconnect again to verify darkness.
+
+The selected scene returned to darkness after both RGB-only control and the
+installed service. Other scenes can leave a faint colored glow. Changing the
+offline scene may require repeating setup; persistence through complete USB
+power loss is unverified. There is no known USB command to select or identify
+this offline scene. The controller reports brightness 16 after the zero request.
 
 ## Keyboard shortcuts
 

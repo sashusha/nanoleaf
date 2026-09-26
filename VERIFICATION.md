@@ -21,9 +21,12 @@ Binary inspection found only system-library dependencies.
 - White near 4000 K visually matched Desktop; brightness changes dimmed the strip,
   off was fully dark, and on restored the remembered setting.
 - Physical power toggled off/restored; mode alternated saved day/evening profiles.
-- Native brightness zero left online RGB output unchanged, made the strip dark
-  on laptop disconnect, and preserved normal restoration on reconnect. The
-  controller reported native brightness 16 after the zero request.
+- Requesting native brightness zero preserved online RGB output but left a faint
+  glow with some offline scenes (red or green matching the selected scene).
+  Readback was 16. Native power-off did not guarantee offline darkness either.
+- A manually selected offline scene stayed completely dark after disconnecting
+  from both RGB-only control and the installed service; reconnect restored normal
+  lighting. This scene has not been identified or tested through full power loss.
 - USB reconnect restored the remembered setting, including after an offline
   physical power-off.
 - Screensaver and display sleep blanked/restored the strip without changing the
