@@ -32,7 +32,7 @@ In **Privacy & Security**, authorize the installed `Nanoleaf.app` for:
 - **Accessibility:** intercept brightness/temperature shortcuts.
 - **Location Services:** calculate sunset when scheduling is enabled.
 
-Run `nanoleaf service status` afterward to activate/check shortcuts. Changing
+Run `nanoleaf status` afterward to activate/check shortcuts. Changing
 signing identity requires new authorization; same-certificate updates retained
 both permissions on the development Mac. If shortcuts remain unavailable,
 remove and re-add the installed app in Accessibility.
@@ -50,12 +50,12 @@ remove and re-add the installed app in Accessibility.
 | `day` / `evening` | Apply saved profile defaults. Initially 4800 K/30% and 3500 K/30%. |
 | `night` | Alias for `evening`, including its defaults and options. |
 | `config` | Show profile defaults, schedule configuration, and config path. |
-| `status` | Show device zones, calibration, and last saved settings—not measured LED output. |
-| `service enable` / `disable` / `status` | Manage background control and login startup. |
+| `status` | Show connection, saved light setting, sunset scheduling, and warnings. Add `--verbose` for setup details. |
+| `service enable` / `disable` | Manage background control and login startup. |
 | `schedule enable` / `disable` / `status` | Manage the optional sunset transition. |
 | `help`, `--help`, `-h`, or no arguments | Show brief help. |
 
-Light commands and `status` require a connected strip. Only one strip is supported.
+Light commands require a connected strip; `status` also works disconnected. Only one strip is supported.
 Quit Nanoleaf Desktop or other lighting controllers before use.
 
 ### Profiles
@@ -151,7 +151,8 @@ Login startup is registered in
 `~/Library/LaunchAgents/io.github.sashusha.nanoleaf.plist`.
 `service disable` removes that registration but keeps the app and settings.
 
-`service status` checks USB, idle blanking, shortcuts, and location. Saved state
+`status --verbose` adds hardware, calibration, service, shortcut, and location details.
+`service status` remains an alias. Saved state
 can differ from visible light after another controller acts or power is lost.
 JSON writes are atomic, but device output and file saves are separate: a save
 error may leave the LEDs changed. Errors identify the failed operation.

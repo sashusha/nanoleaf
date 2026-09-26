@@ -88,6 +88,12 @@ final class CoreTests {
 
 
     func testIdlePolicy() {
+        var reasons = IdlePolicy()
+        reasons.set(.screensaver, active: true)
+        reasons.set(.displaySleep, active: true)
+        XCTAssertEqual(reasons.statusReasons, "screensaver active, display asleep")
+        reasons.set(.screensaver, active: false)
+        XCTAssertEqual(reasons.statusReasons, "display asleep")
         var policy = IdlePolicy()
         XCTAssertTrue(!policy.isSuppressed)
         policy.set(.screensaver, active: true)
@@ -218,6 +224,9 @@ final class CoreTests {
     }
 
     func testParsing() throws {
+        XCTAssertEqual(try Command.parse(["status", "--verbose"]), .status)
+        XCTAssertThrowsError(try Command.parse(["status", "--unknown"]))
+        XCTAssertThrowsError(try Command.parse(["status", "--verbose", "extra"]))
         XCTAssertEqual(try Command.parse(["day"]), .profile("day", temperature: nil, brightness: nil, save: false))
         XCTAssertEqual(try Command.parse(["evening", "--temp", "3300", "--brightness", "0", "--save"]), .profile("evening", temperature: 3300, brightness: 0, save: true))
         for bad in [["brightness", "101"], ["brightness", "-1"], ["temp", "2699"], ["temp", "6501"], ["off", "oops"], ["day", "--temp"], ["day", "--save", "--save"], ["evening", "--brightness", "NaN"], ["day", "--temp", "3000", "--temp", "4000"], ["foo"]] {

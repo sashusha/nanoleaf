@@ -55,6 +55,9 @@ public enum Command: Equatable {
         guard let name = args.first else { return .help }
         let rest = Array(args.dropFirst())
         switch name {
+        case "status":
+            guard rest.isEmpty || rest == ["--verbose"] else { throw CLIError("Usage: nanoleaf status [--verbose]") }
+            return .status
         case "schedule":
             guard rest.count == 1 else { throw CLIError("Usage: nanoleaf schedule enable|disable|status") }
             switch rest[0] {
@@ -63,7 +66,7 @@ public enum Command: Equatable {
             case "status": return .schedule(nil)
             default: throw CLIError("Usage: nanoleaf schedule enable|disable|status")
             }
-        case "help", "--help", "-h", "config", "status", "on", "off", "toggle":
+        case "help", "--help", "-h", "config", "on", "off", "toggle":
             guard rest.isEmpty else { throw CLIError("Unexpected arguments after \(name).") }
             return ["help": .help, "--help": .help, "-h": .help, "config": .config,
                     "status": .status, "on": .on, "off": .off, "toggle": .toggle][name]!

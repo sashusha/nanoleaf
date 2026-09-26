@@ -10,9 +10,10 @@ Usage: nanoleaf <command>
   brightness <0-100> | up|down   Set brightness or adjust by 5%
   temp <2700-6500> | up|down     Set Kelvin or adjust by 100 K
   schedule enable|disable|status Local sunset transition
-  config | status               Show defaults or saved device settings
-  service enable|disable|status Manage background control
+  config | status               Show defaults or current status
+  service enable|disable        Manage background control
 
+Status option: --verbose for setup and diagnostics
 Profile options: --temp K --brightness N --save
 Without --save, overrides leave profile defaults unchanged.
 
@@ -88,13 +89,20 @@ func execute(_ args: [String], transport supplied: HIDTransport? = nil, manual: 
     }
     let device = Lightstrip(transport: transport, state: savedState ?? DisplayState(), calibration: calibration)
     if command == .status {
-        print("Connected LED zones: \(try device.zones())")
-        printCalibration()
+        let verbose = args.contains("--verbose")
+        if verbose {
+            print("Connected LED zones: \(try device.zones())")
+            printCalibration()
+        } else if calibration == nil { printCalibration() }
+        else if let c = calibration, let firmware = hardware?.firmwareVersion,
+                !c.testedFirmwareVersions.contains(firmware) {
+            print("Warning: firmware \(firmware) is not tested with this calibration.")
+        }
         if let state = savedState {
-            print("Last CLI setting: \(state.isOn ? "on" : "off"), \(state.temperature) K requested, \(state.isOn ? state.brightness : 0)%")
-            print("Remembered on brightness: \(state.brightness)%")
-        } else { print("Last CLI setting: unknown. Run day, evening, or on to establish one.") }
-        print("Saved settings, not measured LED output. Idle blanking, other controllers, or power loss may change the visible light.")
+            print(state.isOn
+                ? "On · \(state.temperature) K · \(state.brightness)% (saved setting)"
+                : "Off · restore \(state.temperature) K · \(state.brightness)% (saved setting)")
+        } else { print("Setting unknown. Run day, evening, or on to establish one.") }
         return
     }
     switch command {
@@ -131,6 +139,7 @@ func run() throws {
     let args = Array(CommandLine.arguments.dropFirst())
     if args.first == "service" { try ServiceControl.run(Array(args.dropFirst())); return }
     let command = try Command.parse(args)
+    if command == .status { try ServiceControl.run(args); return }
     if case .schedule = command { try execute(args); return }
     if command == .help || command == .config { try execute(args); return }
     if ServiceControl.isEnabled {

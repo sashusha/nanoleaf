@@ -59,7 +59,7 @@ enum ServiceIPC {
         defer { close(fd) }
         configure(fd, seconds: 15)
         let result = try address { Darwin.connect(fd, $0, $1) }
-        guard result == 0 else { throw CLIError("Service is enabled but unavailable. Run nanoleaf service status, or disable it for standalone use.") }
+        guard result == 0 else { throw CLIError("Service is enabled but unavailable. Run nanoleaf service enable to restart it, or disable it for standalone use.") }
         try send(args, to: fd)
         return try JSONDecoder().decode(ServiceReply.self, from: readLine(fd))
     }
@@ -129,7 +129,7 @@ enum ServiceControl {
         } catch { try? fm.removeItem(at: staging); throw error }
     }
     static func run(_ args: [String]) throws {
-        guard args.count == 1 else { throw CLIError("Usage: nanoleaf service enable|disable|status") }
+        guard args.count == 1 || args == ["status", "--verbose"] else { throw CLIError("Usage: nanoleaf service enable|disable|status") }
         switch args[0] {
         case "run": try BackgroundService().run()
         case "enable":
@@ -148,15 +148,22 @@ enum ServiceControl {
             try FileManager.default.moveItem(at: staging, to: serviceApp)
             try data.write(to: plist, options: .atomic)
             try launchctl(["bootstrap", domain, plist.path])
-            print("Service enabled and starts at login. Run nanoleaf service status to check the device, idle blanking, and keyboard shortcuts.")
+            print("Service enabled and starts at login. Run nanoleaf status to check the device, idle blanking, and keyboard shortcuts.")
         case "disable":
             try stopIfLoaded()
             if isEnabled { try FileManager.default.removeItem(at: plist) }
             print("Service disabled. Commands now run standalone; native offline brightness remains zero.")
         case "status":
-            guard isEnabled else { print("Service disabled."); return }
-            print("Service enabled (starts at login).")
-            let reply = try ServiceIPC.call(["__service_status"])
+            guard isEnabled else {
+                print("Service: disabled (standalone control).")
+                let manager = IOHIDManagerCreate(kCFAllocatorDefault, 0)
+                IOHIDManagerSetDeviceMatching(manager, [kIOHIDVendorIDKey: 0x37FA, kIOHIDProductIDKey: 0x8202] as CFDictionary)
+                let devices = (IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice>) ?? []
+                if devices.isEmpty { print("Device: disconnected.") }
+                else { try execute(args) }
+                return
+            }
+            let reply = try ServiceIPC.call(["__service_status"] + Array(args.dropFirst()))
             print(reply.output)
             if let error = reply.error { throw CLIError(error) }
         default: throw CLIError("Usage: nanoleaf service enable|disable|status")
@@ -316,12 +323,16 @@ final class BackgroundService {
             busy = false
         }
     }
-    private func scheduleStatus() -> String {
+    private func scheduleStatus(verbose: Bool = true) -> String {
         systemLocation.refresh()
         do {
             let config = try ConfigStore().load()
             var result = SunsetSchedule.summary(enabled: config.sunsetAutomation == true, now: Date(), location: systemLocation.location)
-            if config.sunsetAutomation == true { result += "\n" + systemLocation.status }
+            if !verbose {
+                result = result.replacingOccurrences(of: "Sunset schedule: system location, today ", with: "Sunset: ")
+                    .replacingOccurrences(of: ". No morning switch.", with: " · automatic")
+            }
+            if config.sunsetAutomation == true && (verbose || systemLocation.location == nil) { result += "\n" + systemLocation.status }
             if config.sunsetAutomation == true, let usb = transport,
                let state = try StateStore(url: ServiceIPC.directory.appendingPathComponent("state.json")).load(device: usb.identifier),
                let location = systemLocation.location,
@@ -334,10 +345,31 @@ final class BackgroundService {
     }
     private func handle(_ args: [String]) -> ServiceReply {
         if args == ["__schedule_status"] { return ServiceReply(output: scheduleStatus()) }
-        if args == ["__service_status"] {
+        if args.first == "__service_status" || args.first == "status" {
+            let verbose = args.contains("--verbose")
+            guard !busy else { return ServiceReply(output: "Device is busy; retry status.") }
+            busy = true
+            defer { busy = false; DispatchQueue.main.async { self.drainButtons() } }
             brightnessKeys.start()
-            let deviceStatus = transport == nil ? "Waiting for device.\(lastError.map { " Last error: \($0)" } ?? "")" : "Connected. Keepalive: 3 seconds. Offline brightness set to zero. Physical power and day/evening mode handling active."
-            return ServiceReply(output: deviceStatus + "\n" + (idle.isSuppressed ? "Idle blanking active; saved light settings preserved." : "Screensaver/display-sleep blanking ready.") + "\n" + brightnessKeys.status + "\n" + scheduleStatus())
+            var lines = [transport == nil ? "Disconnected · service running" : "Connected · service running"]
+            if let usb = transport {
+                do { try execute(["status"] + (verbose ? ["--verbose"] : []), transport: usb, emit: { line in
+                    if idle.isSuppressed && line.hasPrefix("On · ") {
+                        lines.append("Off · \(idle.statusReasons) · restore " + line.dropFirst(5))
+                    } else { lines.append(line) }
+                }) }
+                catch { lines.append("Device status unavailable: \(error)") }
+            }
+            if let lastError { lines.append("USB error: \(lastError)") }
+            if transport == nil { lines.append("Check the strip’s USB connection.") }
+            if verbose {
+                lines.append("Starts at login · keepalive every 3 seconds")
+                if transport != nil { lines.append("Offline brightness set to zero · physical power and day/evening buttons active") }
+                lines.append(idle.isSuppressed ? "Idle blanking: \(idle.statusReasons)" : "Screensaver/display-sleep blanking ready")
+            }
+            if verbose || !brightnessKeys.isAvailable { lines.append(brightnessKeys.status) }
+            lines.append(scheduleStatus(verbose: verbose))
+            return ServiceReply(output: lines.joined(separator: "\n"))
         }
         guard !busy else { return ServiceReply(output: "", error: "Device is busy; retry the command.") }
         var lines: [String] = []
@@ -349,7 +381,7 @@ final class BackgroundService {
                 throw CLIError("Idle blanking is active. Dismiss the screensaver and wake the display before adjusting the light; off and status remain available.")
             }
             guard command != .help && command != .config else { throw CLIError("Use help and config directly.") }
-            guard let usb = transport else { throw CLIError("Lightstrip unavailable. Check USB connection and service status.") }
+            guard let usb = transport else { throw CLIError("Lightstrip unavailable. Check USB connection and run nanoleaf status.") }
             try execute(args, transport: usb, emit: { lines.append($0) })
             return ServiceReply(output: lines.joined(separator: "\n"))
         } catch { return ServiceReply(output: lines.joined(separator: "\n"), error: String(describing: error)) }

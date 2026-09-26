@@ -72,7 +72,7 @@ public enum SunsetSchedule {
     }
     public static func summary(enabled: Bool, now: Date, location: SolarLocation? = nil) -> String {
         guard enabled else { return "Sunset schedule: disabled." }
-        guard let location else { return "Sunset schedule: enabled; waiting for system location. See nanoleaf service status." }
+        guard let location else { return "Sunset schedule: enabled; waiting for system location. See nanoleaf status." }
         guard let window = window(on: now, location: location) else { return "Sunset schedule: no sunset-to-civil-dusk window at the current location today." }
         let formatter = DateFormatter()
         formatter.timeZone = calendar.timeZone
