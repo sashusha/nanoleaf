@@ -152,7 +152,7 @@ enum ServiceControl {
         case "disable":
             try stopIfLoaded()
             if isEnabled { try FileManager.default.removeItem(at: plist) }
-            print("Service disabled. Commands now run standalone; physical buttons return to device control after its online timeout.")
+            print("Service disabled. Commands now run standalone; native offline brightness remains zero.")
         case "status":
             guard isEnabled else { print("Service disabled."); return }
             print("Service enabled (starts at login).")
@@ -241,6 +241,9 @@ final class BackgroundService {
             // Restore only after a successful state/config read through the regular command path.
             let state = try StateStore(url: ServiceIPC.directory.appendingPathComponent("state.json")).load(device: usb.identifier)
             let suppress = idle.isSuppressed
+            // Native brightness controls offline output; online brightness lives in RGB frames.
+            // Request zero (firmware 1.5.0 reports 16), then immediately restore/blank RGB below.
+            _ = try usb.request(0x09, payload: [0], valueCount: 0)
             if suppress { try blank(usb) }
             else {
                 try execute([reconnect.shouldTurnOn(savedState: state) ? "on" : "off"], transport: usb, manual: false, emit: { _ in })
@@ -333,7 +336,7 @@ final class BackgroundService {
         if args == ["__schedule_status"] { return ServiceReply(output: scheduleStatus()) }
         if args == ["__service_status"] {
             brightnessKeys.start()
-            let deviceStatus = transport == nil ? "Waiting for device.\(lastError.map { " Last error: \($0)" } ?? "")" : "Connected. Keepalive: 3 seconds. Physical power and day/evening mode handling active."
+            let deviceStatus = transport == nil ? "Waiting for device.\(lastError.map { " Last error: \($0)" } ?? "")" : "Connected. Keepalive: 3 seconds. Offline brightness set to zero. Physical power and day/evening mode handling active."
             return ServiceReply(output: deviceStatus + "\n" + (idle.isSuppressed ? "Idle blanking active; saved light settings preserved." : "Screensaver/display-sleep blanking ready.") + "\n" + brightnessKeys.status + "\n" + scheduleStatus())
         }
         guard !busy else { return ServiceReply(output: "", error: "Device is busy; retry the command.") }

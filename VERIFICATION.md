@@ -21,6 +21,9 @@ Binary inspection found only system-library dependencies.
 - White near 4000 K visually matched Desktop; brightness changes dimmed the strip,
   off was fully dark, and on restored the remembered setting.
 - Physical power toggled off/restored; mode alternated saved day/evening profiles.
+- Native brightness zero left online RGB output unchanged, made the strip dark
+  on laptop disconnect, and preserved normal restoration on reconnect. The
+  controller reported native brightness 16 after the zero request.
 - USB reconnect restored the remembered setting, including after an offline
   physical power-off.
 - Screensaver and display sleep blanked/restored the strip without changing the
