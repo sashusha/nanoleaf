@@ -2,9 +2,8 @@
 
 The embedded [NL82K2 hardware 1.1.0 profile](calibrations/nl82k2-hw-1.1.0.json)
 was checked on one strip with firmware 1.5.0. Its samples came from Desktop 2.5.0's
-calibration implementation. No Nanoleaf application code or libraries are included;
-the project's MIT license does not establish rights in third-party material.
-Matching Desktop is not a colorimeter measurement.
+calibration implementation. Matching Desktop is not a colorimeter measurement.
+See [third-party provenance and notices](THIRD_PARTY_NOTICES.md).
 
 ## Selection
 
@@ -39,8 +38,7 @@ swift run --build-system native NanoleafChecks
 ```
 
 Commit the JSON and `Sources/NanoleafCore/BundledCalibrations.generated.swift`
-together, then rebuild. Calibration data is embedded; no external resource file
-is required at runtime. Preserve the complete app when distributing signed builds.
+together, then rebuild. Calibration data is embedded; no external profile file is needed at runtime.
 
 ## USB rendering
 

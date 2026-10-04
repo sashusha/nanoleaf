@@ -42,14 +42,12 @@ python3 Scripts/build-signed-release.py \
   --self-signed --version 0.2.5 --output /tmp/nanoleaf-local.zip
 ```
 
-Approve `codesign` access to this Keychain identity if prompted. The script runs
-tests, builds, removes debug paths, signs with the required location entitlement,
-verifies the signature, and creates a ZIP plus SHA-256 checksum. The output path
+Approve `codesign` access to this Keychain identity if prompted. The script tests,
+builds, signs, and packages the app with a SHA-256 checksum. The output path
 must not already exist.
 
-Extract the ZIP and run `./install.sh` from the extracted directory. It installs
-the intact app, enables login startup, and links `~/.local/bin/nanoleaf` to it.
-Follow the [permission setup](README.md#install-or-update).
+Extract the ZIP and run `./install.sh` from the extracted directory. Follow the
+[permission setup](README.md#install-or-update).
 
 For updates, reuse the identity, choose a new version/output path, and run the
 new archive's installer. Switching from an ad-hoc or someone else's build needs

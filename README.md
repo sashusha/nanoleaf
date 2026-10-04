@@ -5,16 +5,23 @@ Native macOS CLI for the Nanoleaf PC Screen Mirror Lightstrip NL82K2
 Independent project; not affiliated with Nanoleaf. [MIT license](LICENSE) and
 [third-party notices](THIRD_PARTY_NOTICES.md).
 
+## TL;DR
+
+Comfortable white backlighting for your monitor, without managing another light.
+Soften the contrast between your screen and the wall behind it, with brightness
+and warmth tuned to your desk and time of day.
+
+For desktop and laptop Macs alike, the backlight follows display sleep and wake.
+Optional sunset automation gradually shifts it toward your chosen evening setting.
+If you disconnect your Mac, [a one-time offline scene setup](#darkness-when-disconnected)
+lets the strip go dark.
+
+Brightness is tuned to suit your monitor, not automatically read from it. Color
+is used only to adjust the temperature of white light.
+
 Entirely vibe-coded with OpenAI Codex. The only human verification was testing
 the CLI during everyday use; the code, tests, and docs were AI-generated.
 See [tested behavior and limits](VERIFICATION.md).
-
-## Contributing & support
-
-This is a personal project, with no guaranteed support or response times. Small,
-tested contributions and hardware reports are welcome through GitHub. See
-[contribution guidelines](CONTRIBUTING.md) before reporting an issue or proposing
-changes; discuss larger work first.
 
 ## Install or update
 
@@ -25,9 +32,8 @@ extract it, and run this in the extracted directory:
 ./install.sh
 ```
 
-The release binary targets Apple silicon and macOS 12+; older macOS versions
-have not been physically tested. Intel Macs need a [source build](#build-from-source),
-which is also unverified on Intel.
+The binary targets Apple silicon and macOS 12+. Intel requires a
+[source build](#build-from-source); Intel and older macOS versions are untested.
 The installer enables login startup, installs `Nanoleaf.app` under
 `~/Library/Application Support/nanoleaf/`, and links `~/.local/bin/nanoleaf` to it.
 Add `~/.local/bin` to PATH. Use the installer again for updates; keep the app intact.
@@ -41,10 +47,9 @@ In **Privacy & Security**, authorize the installed `Nanoleaf.app` for:
 - **Accessibility:** intercept brightness/temperature shortcuts.
 - **Location Services:** calculate sunset when scheduling is enabled.
 
-Run `nanoleaf status` afterward to activate/check shortcuts. Changing
-signing identity requires new authorization; same-certificate updates retained
-both permissions on the development Mac. If shortcuts remain unavailable,
-remove and re-add the installed app in Accessibility.
+Run `nanoleaf status` to check setup. If shortcuts remain unavailable, remove
+and re-add the installed app in Accessibility. Changing signing identity requires
+new authorization; see [self-signing](SIGNING.md) for source builds.
 
 ## Commands
 
@@ -82,15 +87,12 @@ remembered settings start at 4800 K/30%, independently of profile defaults.
 
 ## Background behavior
 
-The service owns the USB connection; CLI commands reach it through a private
-local socket. Without the service, commands open USB directly and exit.
+The service handles USB, physical buttons, shortcuts, and automation. Without it,
+CLI commands control the strip directly and exit; firmware takes over after its
+online timeout.
 
-- A three-second keepalive maintains online mode. Physical power toggles the
-  remembered setting; mode alternates saved day/evening profiles, starting with
-  day if none was selected. CLI profile selections participate in that cycle.
-- On each connection, the service requests native offline brightness zero.
-  This dims offline scenes but does not guarantee darkness; see setup below.
-  Online brightness uses RGB frames independently.
+- Physical power toggles the remembered setting; mode alternates saved day/evening
+  profiles, starting with day if none was selected.
 - USB reconnect turns the strip on at remembered color/brightness, even after
   it was switched off while disconnected. Startup and USB-error recovery preserve
   saved on/off state; initial startup with no state leaves it off.
@@ -101,10 +103,8 @@ local socket. Without the service, commands open USB directly and exit.
 - Disabling the service stops keepalives; the native brightness setting is retained.
   Do this before using another lighting controller.
 
-Enable/restart while the Mac is active: idle detection depends on notifications
-received while running. USB contention/errors retry every 30 seconds while the
-device is present. An unreachable enabled service reports an error instead of
-opening a competing USB connection.
+Enable the service while the Mac is awake: idle detection depends on notifications
+received while running. USB errors retry every 30 seconds while connected.
 
 ## Darkness when disconnected
 
@@ -117,13 +117,9 @@ firmware 1.5.0:
    to check for a temporary fade. Use mode, not power.
 3. Reconnect, confirm normal lighting, then disconnect again to verify darkness.
 
-The selected scene returned to darkness after both RGB-only control and the
-installed service. Other scenes can leave a faint colored glow. Changing the
-offline scene may require repeating setup; persistence through complete USB
-power loss is unverified. There is no known USB command to select or identify
-this offline scene. The controller reports brightness 16 after the zero request;
-the verbose status message “set to zero” describes the request, not a verified
-zero reading or guaranteed darkness.
+The service requests minimum offline brightness, but some scenes still glow.
+Changing the offline scene may require repeating setup. Persistence through full
+USB power loss is untested; no known USB command selects the dark scene.
 
 ## Keyboard shortcuts
 
@@ -137,9 +133,8 @@ modifiers pass through; F18/F19 require no Shift, Control, Option, or Command.
 Brightness keys must emit brightness events, not F1/F2. On Keychron V10 Ultra,
 Launcher → Custom → Any accepts `KC_F18` and `KC_F19` for remapping.
 
-A passive indicator shows the result at the center of the display containing
-the pointer, then fades after 2.2 seconds. Ordinary CLI commands show no indicator
-and need no Accessibility permission.
+Shortcuts show a brief indicator on the display containing the pointer. Ordinary
+CLI commands need no Accessibility permission.
 
 ## Sunset schedule
 
@@ -147,7 +142,7 @@ Enable with `nanoleaf schedule enable`; disable with `nanoleaf schedule disable`
 It is off by default and requires the service and Location permission.
 
 From local sunset to civil dusk, the service blends saved day temperature and
-brightness into evening values, checking about every 12 seconds. After dusk it
+brightness into evening values. After dusk it
 uses evening; before sunset it leaves the setting alone. **There is no morning
 switch**—use `day`. Manual CLI, keyboard, or controller changes override automation
 until the next sunset, including across restarts.
@@ -156,11 +151,10 @@ Scheduling never turns an off strip on or overrides idle blanking. After wake or
 reconnect it catches up unless a manual override applies; the normal reconnect
 power rule still applies.
 
-Location comes from macOS approximately hourly, stays only in memory, and expires
-after two hours. Dates/times follow the system time zone. Missing permission,
-missing location, or no sunset/civil-dusk crossing pauses automation. Calculations
-use [NOAA's solar equations](https://gml.noaa.gov/grad/solcalc/solareqns.PDF) locally;
-macOS Location Services may need connectivity.
+Location comes from macOS and stays in memory; dates/times use the system time
+zone. Missing permission, a location fix older than two hours, or no local
+sunset/civil-dusk crossing pauses automation. Solar times are calculated locally
+using [NOAA's equations](https://gml.noaa.gov/grad/solcalc/solareqns.PDF).
 
 ## Configuration and troubleshooting
 
@@ -175,20 +169,13 @@ Files under `~/Library/Application Support/nanoleaf/`:
 | `service-disabled` | Marks an explicitly disabled service for standalone CLI routing. |
 | `Nanoleaf.app` | Installed service and its permission identity. |
 
-Login startup is registered in
-`~/Library/LaunchAgents/io.github.sashusha.nanoleaf.plist`.
-`service disable` retains the registration, app, and settings, but disables login
-startup and stops the service. `service enable` reuses that registration. Repeated
-enable is a no-op when the installed service is already loaded; updates reuse
-the registration unless its launch settings changed.
-macOS controls background-item notifications; a single lifetime notification is
-not guaranteed.
+`service disable` stops the service and login startup while retaining settings and
+the LaunchAgent at `~/Library/LaunchAgents/io.github.sashusha.nanoleaf.plist`.
+`service enable` reuses it; running it again while enabled does nothing.
 
-`status --verbose` adds hardware, calibration, service, shortcut, and location details.
-`service status` remains an alias. Saved state
-can differ from visible light after another controller acts or power is lost.
-JSON writes are atomic, but device output and file saves are separate: a save
-error may leave the LEDs changed. Errors identify the failed operation.
+Use `status --verbose` for hardware, calibration, shortcut, and location details;
+`service status` is an alias. Light settings are remembered values, not device
+measurements. If saving fails after a command, the light may already have changed.
 
 ## Build from source
 
@@ -202,10 +189,12 @@ swift build --build-system native -c release --product nanoleaf
 ./.build/release/nanoleaf --help
 ```
 
-For an installable app with a persistent signing identity, follow
-[Build and self-sign](SIGNING.md). A bare build can run standalone or create an
-ad-hoc service via `service enable` only when no installed app exists. A bare
-binary cannot replace an installed app, and an ad-hoc app cannot replace a
-certificate-signed one. Use the signed installer for updates; changed ad-hoc
-builds may require permissions again. Do not overwrite the executable inside
-an already signed app.
+For installation and updates, follow [Build and self-sign](SIGNING.md). A bare
+binary can create an ad-hoc service only when no app is installed; it cannot
+replace an existing app. Keep signed apps intact to preserve their permissions.
+
+## Contributing & support
+
+Small, tested fixes and hardware reports are welcome. This personal project has
+no guaranteed support or response times. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for reports, proposals, and pull requests.

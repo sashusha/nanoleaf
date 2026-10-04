@@ -1,8 +1,7 @@
 # Contributing
 
-This is a personal project maintained for the author’s own use. Small, tested
-fixes and hardware compatibility reports are welcome. Responses, reviews,
-features, and fixes are not guaranteed; there is no support schedule.
+Small, tested fixes and hardware reports are welcome. This is maintained for the
+author’s own use; responses, reviews, and fixes are not guaranteed.
 
 ## Reports and changes
 
@@ -25,9 +24,7 @@ Add regression coverage when it tests a meaningful failure. Do not present mocke
 USB tests as physical verification. For calibration changes, follow
 [the calibration instructions](CALIBRATION.md).
 
-AI-assisted contributions are welcome; contributors must understand and test
-what they submit. The project itself was AI-generated, with the verification
-limits recorded in [VERIFICATION.md](VERIFICATION.md).
+AI-assisted contributions are welcome; understand and test what you submit.
 
 ## Expectations
 
