@@ -165,7 +165,11 @@ Files under `~/Library/Application Support/nanoleaf/`:
 
 Login startup is registered in
 `~/Library/LaunchAgents/io.github.sashusha.nanoleaf.plist`.
-`service disable` removes that registration but keeps the app and settings.
+`service disable` retains the registration, app, and settings, but disables login
+startup and stops the service. `service enable` reuses that registration. Repeated
+enable is a no-op; app updates restart the service without rewriting registration.
+macOS controls background-item notifications; a single lifetime notification is
+not guaranteed.
 
 `status --verbose` adds hardware, calibration, service, shortcut, and location details.
 `service status` remains an alias. Saved state

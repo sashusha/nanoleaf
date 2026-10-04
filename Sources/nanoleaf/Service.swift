@@ -68,7 +68,10 @@ enum ServiceIPC {
 enum ServiceControl {
     static let label = "io.github.sashusha.nanoleaf"
     static var plist: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents/\(label).plist") }
-    static var isEnabled: Bool { FileManager.default.fileExists(atPath: plist.path) }
+    static var disabledMarker: URL { ServiceIPC.directory.appendingPathComponent("service-disabled") }
+    static var isEnabled: Bool {
+        FileManager.default.fileExists(atPath: plist.path) && !FileManager.default.fileExists(atPath: disabledMarker.path)
+    }
     static var domain: String { "gui/\(getuid())" }
     @discardableResult static func launchctl(_ args: [String], required: Bool = true) throws -> String {
         let process = Process(); process.executableURL = URL(fileURLWithPath: "/bin/launchctl"); process.arguments = args
@@ -79,23 +82,42 @@ enum ServiceControl {
         if required && process.terminationStatus != 0 { throw CLIError("launchctl: \(output.trimmingCharacters(in: .whitespacesAndNewlines))") }
         return output
     }
-    static func stopIfLoaded() throws {
+    static func isLoaded() throws -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         process.arguments = ["print", "\(domain)/\(label)"]
         process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
         try process.run(); process.waitUntilExit()
-        if process.terminationStatus == 0 { try launchctl(["bootout", "\(domain)/\(label)"]) }
+        return process.terminationStatus == 0
+    }
+    static func stopIfLoaded() throws {
+        if try isLoaded() { try launchctl(["bootout", "\(domain)/\(label)"]) }
     }
     static var serviceApp: URL { ServiceIPC.directory.appendingPathComponent("Nanoleaf.app") }
+    private static func certificateSigned(_ app: URL) -> Bool {
+        let check = Process()
+        check.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        check.arguments = ["--verify", "--strict", "-R", "=certificate leaf[subject.CN] exists", app.path]
+        check.standardOutput = FileHandle.nullDevice
+        check.standardError = FileHandle.nullDevice
+        do { try check.run(); check.waitUntilExit(); return check.terminationStatus == 0 }
+        catch { return false }
+    }
     static func prepareServiceApp(executable: String) throws -> URL {
         let fm = FileManager.default
         let staging = ServiceIPC.directory.appendingPathComponent("Nanoleaf-" + UUID().uuidString + ".app")
         do {
             // Distributed app releases must retain the developer's signature,
             // resource seal, and notarization ticket across installation.
-            if Bundle.main.bundleURL.pathExtension == "app" {
-                try fm.copyItem(at: Bundle.main.bundleURL, to: staging)
+            // Bundle.main can describe the shell-facing symlink rather than its app.
+            let binaryURL = URL(fileURLWithPath: executable).resolvingSymlinksInPath()
+            let macOS = binaryURL.deletingLastPathComponent()
+            let sourceContents = macOS.deletingLastPathComponent()
+            let app = sourceContents.deletingLastPathComponent()
+            if macOS.lastPathComponent == "MacOS", sourceContents.lastPathComponent == "Contents",
+               app.pathExtension == "app",
+               Bundle(url: app)?.executableURL?.resolvingSymlinksInPath() == binaryURL {
+                try fm.copyItem(at: app, to: staging)
                 let verify = Process()
                 verify.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
                 verify.arguments = ["--verify", "--strict", staging.path]
@@ -104,7 +126,13 @@ enum ServiceControl {
                 let message = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
                 verify.waitUntilExit()
                 guard verify.terminationStatus == 0 else { throw CLIError("Service app signature is invalid: \(message)") }
+                if certificateSigned(serviceApp), !certificateSigned(staging) {
+                    throw CLIError("Refusing to replace the signed service with an ad-hoc app. Install a certificate-signed release to preserve permissions.")
+                }
                 return staging
+            }
+            guard !fm.fileExists(atPath: serviceApp.path) else {
+                throw CLIError("This standalone binary cannot replace the installed app. Use the installed nanoleaf command to enable the service, or install an intact signed release.")
             }
             let contents = staging.appendingPathComponent("Contents")
             let binary = contents.appendingPathComponent("MacOS/nanoleaf")
@@ -143,16 +171,44 @@ enum ServiceControl {
                 "RunAtLoad": true, "KeepAlive": true, "ThrottleInterval": 30,
                 "StandardErrorPath": ServiceIPC.directory.appendingPathComponent("service.log").path]
             let data = try PropertyListSerialization.data(fromPropertyList: settings, format: .xml, options: 0)
-            try stopIfLoaded()
-            if FileManager.default.fileExists(atPath: serviceApp.path) { try FileManager.default.removeItem(at: serviceApp) }
-            try FileManager.default.moveItem(at: staging, to: serviceApp)
-            try data.write(to: plist, options: .atomic)
-            try launchctl(["bootstrap", domain, plist.path])
+            let loaded = try isLoaded()
+            let previous = try? Data(contentsOf: plist)
+            let sameRegistration = previous.flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? NSDictionary } == settings as NSDictionary
+            let installedInvocation = executable == serviceExecutable
+            if installedInvocation && sameRegistration && loaded && isEnabled {
+                print("Service already enabled. Run nanoleaf status to check it.")
+                return
+            }
+            // Preserve the launchd registration during app updates; the running
+            // process keeps its old executable until kickstart replaces it.
+            if loaded && !sameRegistration { try stopIfLoaded() }
+            if !installedInvocation {
+                let backup = ServiceIPC.directory.appendingPathComponent("Nanoleaf-backup-" + UUID().uuidString + ".app")
+                let hadApp = FileManager.default.fileExists(atPath: serviceApp.path)
+                if hadApp { try FileManager.default.moveItem(at: serviceApp, to: backup) }
+                do { try FileManager.default.moveItem(at: staging, to: serviceApp) }
+                catch {
+                    if hadApp { try? FileManager.default.moveItem(at: backup, to: serviceApp) }
+                    throw error
+                }
+                try? FileManager.default.removeItem(at: backup)
+            }
+            if !sameRegistration { try data.write(to: plist, options: .atomic) }
+            try launchctl(["enable", "\(domain)/\(label)"])
+            if FileManager.default.fileExists(atPath: disabledMarker.path) { try FileManager.default.removeItem(at: disabledMarker) }
+            if loaded && sameRegistration { try launchctl(["kickstart", "-k", "\(domain)/\(label)"]) }
+            else { try launchctl(["bootstrap", domain, plist.path]) }
             print("Service enabled and starts at login. Run nanoleaf status to check the device, idle blanking, and keyboard shortcuts.")
         case "disable":
+            // Keep the installed definition; launchd's disabled override persists across login/reboot.
+            if FileManager.default.fileExists(atPath: plist.path) {
+                try FileManager.default.createDirectory(at: ServiceIPC.directory, withIntermediateDirectories: true)
+                try Data().write(to: disabledMarker, options: .atomic)
+                do { try launchctl(["disable", "\(domain)/\(label)"]) }
+                catch { try? FileManager.default.removeItem(at: disabledMarker); throw error }
+            }
             try stopIfLoaded()
-            if isEnabled { try FileManager.default.removeItem(at: plist) }
-            print("Service disabled. Commands now run standalone; native offline brightness remains zero.")
+            print("Service disabled; login registration retained. Commands now run standalone.")
         case "status":
             guard isEnabled else {
                 print("Service: disabled (standalone control).")
