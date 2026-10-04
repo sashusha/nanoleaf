@@ -63,7 +63,9 @@ def main():
         shutil.copy2(ROOT / 'Scripts/install-release.sh', stage / 'install.sh')
         (stage / 'INSTALL.txt').write_text('Run ./install.sh from this extracted directory. Keep Nanoleaf.app intact.\n'
             'The installer copies it into ~/Library/Application Support/nanoleaf and installs a CLI symlink.\n'
-            'Allow Nanoleaf.app in Accessibility and Location Services when prompted.\n'
+            'For keyboard shortcuts, add the installed Nanoleaf.app in Privacy & Security > Accessibility.\n'
+            'For sunset scheduling, enable the schedule and allow its Location Services request.\n'
+            'Setup and troubleshooting: https://github.com/sashusha/nanoleaf#install-or-update\n'
             + ('LOCAL AD-HOC TEST BUILD: permissions may reset on updates.\n' if args.identity == '-' else 'Self-signed app; not Apple-notarized.\n' if args.self_signed else 'Developer ID signed app.\n'))
         output.parent.mkdir(parents=True, exist_ok=True)
         run('ditto', '--norsrc', '--noextattr', '-c', '-k', str(stage), str(output))

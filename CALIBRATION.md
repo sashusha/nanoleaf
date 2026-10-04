@@ -15,7 +15,7 @@ profile; unavailable hardware metadata or no match uses generic RGB approximatio
 `~/Library/Application Support/nanoleaf/calibration.json` can contain one profile
 or an array. An exact local match takes precedence over embedded profiles.
 Malformed files and multiple exact matches within a set are errors. Changing a
-profile affects the next rendered command; `status` shows the current selection,
+profile affects the next rendered command; `status --verbose` shows the current selection,
 not necessarily the calibration used for the previous frame.
 
 ## Profile schema

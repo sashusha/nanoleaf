@@ -9,6 +9,13 @@ Entirely vibe-coded with OpenAI Codex. The only human verification was testing
 the CLI during everyday use; the code, tests, and docs were AI-generated.
 See [tested behavior and limits](VERIFICATION.md).
 
+## Contributing & support
+
+This is a personal project, with no guaranteed support or response times. Small,
+tested contributions and hardware reports are welcome through GitHub. See
+[contribution guidelines](CONTRIBUTING.md) before reporting an issue or proposing
+changes; discuss larger work first.
+
 ## Install or update
 
 Download `nanoleaf-macos-arm64.zip` from [Releases](https://github.com/sashusha/nanoleaf/releases/latest),
@@ -18,7 +25,9 @@ extract it, and run this in the extracted directory:
 ./install.sh
 ```
 
-Requires Apple silicon and macOS 12+. Intel Macs must [build from source](#build-from-source).
+The release binary targets Apple silicon and macOS 12+; older macOS versions
+have not been physically tested. Intel Macs need a [source build](#build-from-source),
+which is also unverified on Intel.
 The installer enables login startup, installs `Nanoleaf.app` under
 `~/Library/Application Support/nanoleaf/`, and links `~/.local/bin/nanoleaf` to it.
 Add `~/.local/bin` to PATH. Use the installer again for updates; keep the app intact.
@@ -99,20 +108,22 @@ opening a competing USB connection.
 
 ## Darkness when disconnected
 
-A one-time offline scene selection is needed on the tested NL82K2 hardware 1.1.0,
+An offline scene selection was needed on the tested NL82K2 hardware 1.1.0,
 firmware 1.5.0:
 
 1. Connect with the service running so it applies the minimum offline brightness.
 2. Disconnect the laptop, leaving the strip powered. Use the controller’s **mode**
    button to select a scene that stays completely dark; wait at least 15 seconds
-   to rule out a temporary fade. Use mode, not power.
+   to check for a temporary fade. Use mode, not power.
 3. Reconnect, confirm normal lighting, then disconnect again to verify darkness.
 
 The selected scene returned to darkness after both RGB-only control and the
 installed service. Other scenes can leave a faint colored glow. Changing the
 offline scene may require repeating setup; persistence through complete USB
 power loss is unverified. There is no known USB command to select or identify
-this offline scene. The controller reports brightness 16 after the zero request.
+this offline scene. The controller reports brightness 16 after the zero request;
+the verbose status message “set to zero” describes the request, not a verified
+zero reading or guaranteed darkness.
 
 ## Keyboard shortcuts
 
@@ -161,13 +172,15 @@ Files under `~/Library/Application Support/nanoleaf/`:
 | `state.json` | Last settings, selected profile, and manual-override time per device. |
 | `calibration.json` | Optional override for the embedded [hardware calibration](CALIBRATION.md). |
 | `service.log` | Service errors. |
+| `service-disabled` | Marks an explicitly disabled service for standalone CLI routing. |
 | `Nanoleaf.app` | Installed service and its permission identity. |
 
 Login startup is registered in
 `~/Library/LaunchAgents/io.github.sashusha.nanoleaf.plist`.
 `service disable` retains the registration, app, and settings, but disables login
 startup and stops the service. `service enable` reuses that registration. Repeated
-enable is a no-op; app updates restart the service without rewriting registration.
+enable is a no-op when the installed service is already loaded; updates reuse
+the registration unless its launch settings changed.
 macOS controls background-item notifications; a single lifetime notification is
 not guaranteed.
 
@@ -191,5 +204,8 @@ swift build --build-system native -c release --product nanoleaf
 
 For an installable app with a persistent signing identity, follow
 [Build and self-sign](SIGNING.md). A bare build can run standalone or create an
-ad-hoc service via `service enable`, but changed builds may require permissions
-again. Do not overwrite the executable inside an already signed app.
+ad-hoc service via `service enable` only when no installed app exists. A bare
+binary cannot replace an installed app, and an ad-hoc app cannot replace a
+certificate-signed one. Use the signed installer for updates; changed ad-hoc
+builds may require permissions again. Do not overwrite the executable inside
+an already signed app.

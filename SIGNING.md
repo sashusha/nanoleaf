@@ -39,7 +39,7 @@ From a [source checkout](README.md#build-from-source), with Python 3 available:
 ```sh
 python3 Scripts/build-signed-release.py \
   --identity 'Nanoleaf Local Signing' \
-  --self-signed --version 0.2.1 --output /tmp/nanoleaf-local.zip
+  --self-signed --version 0.2.5 --output /tmp/nanoleaf-local.zip
 ```
 
 Approve `codesign` access to this Keychain identity if prompted. The script runs
@@ -65,7 +65,7 @@ and a `notarytool` Keychain credential profile. Use it instead of `--self-signed
 ```sh
 python3 Scripts/build-signed-release.py \
   --identity 'Developer ID Application: YOUR NAME (TEAM_ID)' \
-  --version 0.2.1 --notary-profile nanoleaf-notary \
+  --version 0.2.5 --notary-profile nanoleaf-notary \
   --output /tmp/nanoleaf-notarized.zip
 ```
 

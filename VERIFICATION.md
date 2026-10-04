@@ -6,7 +6,7 @@ inspections were performed by Codex, not independently reviewed.
 
 ## Automated checks
 
-All 27 test groups pass and the release builds. Coverage includes parsing and
+The v0.2.5 build passed all 27 test groups. Coverage includes parsing and
 aliases, saved-state/configuration compatibility, rejected writes, frame encoding,
 calibration selection, relative adjustments, button handling, reconnect policy,
 overlapping idle events, sunset interpolation, manual overrides, time zones,
@@ -42,9 +42,16 @@ clients, socket permissions, and system location delivery were checked locally.
 Two self-signed app versions had different code hashes and the same certificate
 identity. After the first was authorized, installing the second preserved both
 permissions: its event tap activated and a fresh location fix arrived without
-reauthorization. The strip was disconnected during this test. The final release
-archive passed signature verification and executable startup checks; it contains
-no private-key files or local user build paths.
+reauthorization. The strip was disconnected during that initial signing test.
+Release archives passed signature verification; the v0.2.1 archive was also
+inspected for private-key files and local user build paths.
+
+For v0.2.4–v0.2.5, live installation checks confirmed that CLI-symlink enable
+preserved the certificate, standalone/ad-hoc replacements were rejected, updates
+retained the registration file, and repeated enable retained the running process.
+Disable/enable and stop/start retained the registration and restored service
+operation with Accessibility and Location still active. Login/reboot persistence
+of the disabled state and notification frequency were not physically tested.
 
 ## Not verified
 
