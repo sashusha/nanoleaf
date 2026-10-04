@@ -51,7 +51,7 @@ remove and re-add the installed app in Accessibility.
 | `night` | Alias for `evening`, including its defaults and options. |
 | `config` | Show profile defaults, schedule configuration, and config path. |
 | `status` | Show connection, saved light setting, sunset scheduling, and warnings. Add `--verbose` for setup details. |
-| `service enable` / `disable` | Manage background control and login startup. |
+| `service enable` / `disable` | Manage background control and login startup; `start` / `stop` are aliases. |
 | `schedule enable` / `disable` / `status` | Manage the optional sunset transition. |
 | `help`, `--help`, `-h`, or no arguments | Show brief help. |
 

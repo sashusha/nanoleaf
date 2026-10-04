@@ -11,7 +11,7 @@ Usage: nanoleaf <command>
   temp <2700-6500> | up|down     Set Kelvin or adjust by 100 K
   schedule enable|disable|status Local sunset transition
   config | status               Show defaults or current status
-  service enable|disable        Manage background control
+  service enable|disable        Manage background control (start/stop aliases)
 
 Status option: --verbose for setup and diagnostics
 Profile options: --temp K --brightness N --save

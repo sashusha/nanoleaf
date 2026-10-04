@@ -157,10 +157,10 @@ enum ServiceControl {
         } catch { try? fm.removeItem(at: staging); throw error }
     }
     static func run(_ args: [String]) throws {
-        guard args.count == 1 || args == ["status", "--verbose"] else { throw CLIError("Usage: nanoleaf service enable|disable|status") }
+        guard args.count == 1 || args == ["status", "--verbose"] else { throw CLIError("Usage: nanoleaf service enable|start|disable|stop|status") }
         switch args[0] {
         case "run": try BackgroundService().run()
-        case "enable":
+        case "enable", "start":
             guard let executable = Bundle.main.executableURL?.resolvingSymlinksInPath().path else { throw CLIError("Cannot locate this executable.") }
             try FileManager.default.createDirectory(at: plist.deletingLastPathComponent(), withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: ServiceIPC.directory, withIntermediateDirectories: true)
@@ -199,7 +199,7 @@ enum ServiceControl {
             if loaded && sameRegistration { try launchctl(["kickstart", "-k", "\(domain)/\(label)"]) }
             else { try launchctl(["bootstrap", domain, plist.path]) }
             print("Service enabled and starts at login. Run nanoleaf status to check the device, idle blanking, and keyboard shortcuts.")
-        case "disable":
+        case "disable", "stop":
             // Keep the installed definition; launchd's disabled override persists across login/reboot.
             if FileManager.default.fileExists(atPath: plist.path) {
                 try FileManager.default.createDirectory(at: ServiceIPC.directory, withIntermediateDirectories: true)
@@ -222,7 +222,7 @@ enum ServiceControl {
             let reply = try ServiceIPC.call(["__service_status"] + Array(args.dropFirst()))
             print(reply.output)
             if let error = reply.error { throw CLIError(error) }
-        default: throw CLIError("Usage: nanoleaf service enable|disable|status")
+        default: throw CLIError("Usage: nanoleaf service enable|start|disable|stop|status")
         }
     }
 }
